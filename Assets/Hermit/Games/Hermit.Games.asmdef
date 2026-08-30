@@ -1,0 +1,16 @@
+{
+    "name": "Hermit.Games",
+    "rootNamespace": "Hermit.Games",
+    "references": [
+        "Hermit.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
