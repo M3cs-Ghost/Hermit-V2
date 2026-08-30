@@ -27,48 +27,77 @@ file only tracks what actually exists in this repo *today*.
 
 | Assembly | Folder | References | Purpose |
 |---|---|---|---|
-| `Hermit.Core` | `Assets/Hermit/Core/` | — | Bootstrap, logging, environment config. Future home of the Game Framework (GameDefinition/Session/Context/Result/Manager/FlowController). |
-| `Hermit.Networking` | `Assets/Hermit/Networking/` | Core | Auth/backend/session/connectivity **contracts only**. No implementation until C4. |
-| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Empty until real UI work starts. |
-| `Hermit.Games` | `Assets/Hermit/Games/` | Core | Reserved. One assembly for *all* minigames (not one per game) — see ADR-003 note on assembly count. |
-| `Hermit.Editor` | `Assets/Hermit/Editor/` | Core | Editor-only tooling (content validators, custom inspectors). Empty today. |
+| `Hermit.Core` | `Assets/Hermit/Core/` | — | Pure data/utility: logging, environment config, `HermitError`/`HermitResult<T>`. Zero dependencies, on purpose — future home of the domain-agnostic Game Framework. |
+| `Hermit.Networking` | `Assets/Hermit/Networking/` | Core | Auth/backend/session/connectivity contracts **and** their concrete REST implementations (`Supabase*Service`), added in C4. |
+| `Hermit.Runtime` | `Assets/Hermit/Runtime/` | Core, Networking | **Composition root.** The one assembly allowed to construct concrete Networking services and wire them together. Holds `HermitBootstrap`, `HermitAppContext`, the auto-installer, and the C4 debug panel. Resolves the "what is `Runtime/` for" question left open after C3. |
+| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Still empty — the C4 debug panel is deliberately **not** here (see below). |
+| `Hermit.Games` | `Assets/Hermit/Games/` | Core | Reserved. One assembly for *all* minigames (not one per game). |
+| `Hermit.Editor` | `Assets/Hermit/Editor/` | Core | Editor-only tooling. Empty today. |
 | `Hermit.Tests.EditMode` | `Assets/Hermit/Tests/EditMode/` | Core, Networking | Pure-logic tests, Editor platform only. |
-| `Hermit.Tests.PlayMode` | `Assets/Hermit/Tests/PlayMode/` | Core | Tests that need the runtime loop (e.g. Bootstrap). |
+| `Hermit.Tests.PlayMode` | `Assets/Hermit/Tests/PlayMode/` | Runtime | Tests that need the runtime loop (Bootstrap lives in Runtime now, not Core). |
 
-No circular references. Only `Hermit.Core` has zero dependencies; everything
-else points at it, never the other way around.
+No circular references. `Hermit.Core` still has zero dependencies. Dependency
+direction: `Core ← Networking ← Runtime`; `UI`/`Games`/`Editor` depend only on
+`Core` and currently contain nothing.
+
+**Why the debug panel lives in `Hermit.Runtime`, not `Hermit.UI`:** it needs to
+call `HermitAppContext` directly (Login/Refresh/Logout/etc.), and `Hermit.UI`
+must stay decoupled from Networking per the client/backend boundary above. The
+panel is explicitly spike-only tooling, not product UI — putting it in the
+composition-root assembly keeps that boundary honest instead of quietly
+bending it "just for the debug panel."
 
 ## Namespaces
 
-`Hermit.Core`, `Hermit.Networking`, `Hermit.UI`, `Hermit.Games`, `Hermit.Editor`,
-`Hermit.Tests.EditMode`, `Hermit.Tests.PlayMode` — one namespace per assembly,
-matching the folder 1:1.
+`Hermit.Core`, `Hermit.Networking`, `Hermit.Runtime`, `Hermit.UI`,
+`Hermit.Games`, `Hermit.Editor`, `Hermit.Tests.EditMode`,
+`Hermit.Tests.PlayMode` — one namespace per assembly, matching the folder 1:1.
 
 ## Environments
 
-Three environments are modeled (`HermitEnvironment` enum: Development / Staging
-/ Production) and one data type (`EnvironmentConfig`, a `ScriptableObject`) to
-hold `supabaseUrl` / `supabaseAnonKey` per environment. **No `.asset` instances
-exist yet** — creating `EnvironmentConfig_Dev.asset` (pointed at the same
-Supabase project V1 already uses) is a manual Editor step for C4, not done in
-this repo yet.
+Three environments are modeled (`HermitEnvironment` enum) and one data type
+(`EnvironmentConfig`, a `ScriptableObject`, now also exposing `IsConfigured`).
+A **Development** instance exists at
+`Assets/Hermit/Data/Resources/EnvironmentConfig_Development.asset`, pointed at
+the same Supabase project V1 already uses
+(`https://pgmwxbtnwpggyxipobif.supabase.co`). Its `_supabaseAnonKey` field is
+**intentionally blank** — an automated safety check refused to let this
+session write a JWT-shaped string to a file, so filling it in is a manual
+step: open the asset in the Inspector and paste the anon key from V1's
+`supabase-client.js` (`SUPABASE_ANON_KEY` constant). No Staging/Production
+instances exist — not needed yet.
 
-## Scenes
+The asset lives under a `Resources/` folder specifically so
+`HermitRuntimeInstaller` can `Resources.Load<EnvironmentConfig>(...)` it at
+startup with zero scene wiring — nothing needs to be manually dragged onto any
+GameObject.
 
-`00_Bootstrap` (build index 0, never unloaded) → `01_Shell` → `02_GameplaySandbox`.
-`00_Bootstrap` currently holds nothing beyond confirming `Hermit.Core` loads
-(see `HermitBootstrap`) — no additive-scene loading, no persistent Shell logic
-yet. That wiring belongs to the Game Framework work, not C3.
+## Boot flow (implemented in C4)
+
+`HermitRuntimeInstaller.Install()` runs automatically via
+`[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]` — no component needs to be
+placed in `00_Bootstrap` (or any scene) by hand. It spawns one
+`DontDestroyOnLoad` GameObject with `HermitBootstrap`, loads
+`EnvironmentConfig_Development` from `Resources/`, constructs one
+`HermitAppContext`, calls `RestoreSessionAsync()`, and — only when the loaded
+config's environment is `Development` — attaches `C4DebugPanel`. A
+Staging/Production build (once those configs exist) never shows the panel.
 
 ## Folders not yet in use
 
-`Content/`, `Data/`, `Text/`, `Art/`, `Audio/`, and `Runtime/` exist (created
-during manual setup) but are empty and unused as of this commit. `Runtime/` in
-particular has no assigned purpose yet — flagged for a decision in C4/C5
-(fold into an existing assembly, repurpose, or remove) rather than guessed at
-here.
+`Content/`, `Data/` (partially used now, see Environments above), `Text/`,
+`Art/`, `Audio/` exist but are still empty/unused. `Runtime/` is now resolved
+— see the Assemblies table.
+
+## Known housekeeping item
+
+Resolved at C4 closeout: the old C3 `Assets/Hermit/Core/HermitBootstrap.cs`
+(superseded by `Hermit.Runtime.HermitBootstrap`) was confirmed to have zero
+remaining references — its `GameObject` was already removed from
+`00_Bootstrap.unity`, and no scene, prefab, or code pointed at its GUID or
+type — and has been deleted along with its `.meta` file.
 
 ## C4 objective
 
-Unity ↔ Supabase Technical Spike. Exit criteria, SDK shortlist, and what this
-repo already has ready for it: see `Docs/C4_SUPABASE_SPIKE.md`.
+Unity ↔ Supabase Technical Spike. Exit criteria, decision, and current
+PASS/FAIL state: see `Docs/C4_SUPABASE_SPIKE.md` and `Docs/C4_TEST_RESULTS.md`.

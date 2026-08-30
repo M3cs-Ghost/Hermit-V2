@@ -27,5 +27,9 @@ namespace Hermit.Core
         public HermitEnvironment Environment => _environment;
         public string SupabaseUrl => _supabaseUrl;
         public string SupabaseAnonKey => _supabaseAnonKey;
+
+        /// <summary>True once both URL and anon key have real values. Lets callers fail
+        /// fast with a clear log instead of sending requests to an empty URL.</summary>
+        public bool IsConfigured => !string.IsNullOrEmpty(_supabaseUrl) && !string.IsNullOrEmpty(_supabaseAnonKey);
     }
 }

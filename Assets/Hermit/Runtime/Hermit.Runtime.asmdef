@@ -1,0 +1,17 @@
+{
+    "name": "Hermit.Runtime",
+    "rootNamespace": "Hermit.Runtime",
+    "references": [
+        "Hermit.Core",
+        "Hermit.Networking"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

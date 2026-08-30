@@ -2,7 +2,7 @@
   "name": "Hermit.Tests.PlayMode",
   "rootNamespace": "Hermit.Tests.PlayMode",
   "references": [
-    "Hermit.Core"
+    "Hermit.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

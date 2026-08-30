@@ -2,7 +2,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
-using Hermit.Core;
+using Hermit.Runtime;
 
 namespace Hermit.Tests.PlayMode
 {
