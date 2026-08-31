@@ -222,7 +222,7 @@ GameObject:
   - component: {fileID: 900000003}
   - component: {fileID: 900000002}
   m_Layer: 0
-  m_Name: ClasicoVerticalSlice
+  m_Name: GameSession
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -237,9 +237,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 900000001}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 17b03833248813d3cd086844a95a8173, type: 3}
+  m_Script: {fileID: 11500000, guid: af217726ed482c7783d03e8cfe28ef98, type: 3}
   m_Name:
-  m_EditorClassIdentifier: Hermit.Runtime::Hermit.Runtime.GameFramework.ClasicoVerticalSliceInstaller
+  m_EditorClassIdentifier: Hermit.Runtime::Hermit.Runtime.GameFramework.GameSessionInstaller
 --- !u!4 &900000003
 Transform:
   m_ObjectHideFlags: 0

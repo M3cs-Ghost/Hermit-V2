@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   _setId: "c5_sample"
   _description: "C5 sample content — 10 preguntas básicas de contabilidad usadas para validar el Game Framework y el vertical slice de Clásico. NO es la biblioteca académica final."
+  _schemaVersion: 1
   _questions:
   - Id: "activo_definicion"
     Domain: "contabilidad"
@@ -30,6 +31,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "El capital aportado por los socios"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "pasivo_definicion"
     Domain: "contabilidad"
     Topic: "pasivo"
@@ -45,6 +50,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "El efectivo disponible en caja y bancos"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "patrimonio_definicion"
     Domain: "contabilidad"
     Topic: "patrimonio"
@@ -60,6 +69,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Pasivo menos Activo"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "ecuacion_contable"
     Domain: "contabilidad"
     Topic: "ecuacion_contable"
@@ -75,6 +88,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Pasivo = Activo + Patrimonio"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "ingreso_definicion"
     Domain: "contabilidad"
     Topic: "ingreso"
@@ -90,6 +107,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "La compra de un activo fijo"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "gasto_definicion"
     Domain: "contabilidad"
     Topic: "gasto"
@@ -105,6 +126,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Un aumento en el activo disponible"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: "No confundir Gasto con Costo (el costo se capitaliza, el gasto se reconoce en el período)."
   - Id: "debito_naturaleza_activo"
     Domain: "contabilidad"
     Topic: "debito_credito"
@@ -120,6 +145,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Ninguno, los activos no se registran con partida doble"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "credito_naturaleza_pasivo"
     Domain: "contabilidad"
     Topic: "debito_credito"
@@ -135,6 +164,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Ninguno, los pasivos no se registran con partida doble"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "activo_ejemplo"
     Domain: "contabilidad"
     Topic: "activo"
@@ -150,6 +183,10 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Ingresos por ventas"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""
   - Id: "pasivo_ejemplo"
     Domain: "contabilidad"
     Topic: "pasivo"
@@ -165,3 +202,7 @@ MonoBehaviour:
       IsCorrect: 0
     - Text: "Ingresos por servicios prestados"
       IsCorrect: 0
+    ContentVersion: 1
+    SourceId: ""
+    SourceLabel: ""
+    ConfusableWith: ""

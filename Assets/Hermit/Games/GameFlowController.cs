@@ -16,7 +16,11 @@ namespace Hermit.Games
     ///
     /// Never branches on GameId or on a concrete engine type — every game,
     /// including the extensibility test's FakeGame, drives through the exact
-    /// same code path here.
+    /// same code path here. Takes a <see cref="GameDefinition"/> directly
+    /// (C6) rather than C5's separate "GameRegistration" wrapper — the
+    /// engine factory now lives on the definition itself
+    /// (<see cref="GameDefinition.CreateEngine"/>), so wrapping it a second
+    /// time added a type without adding a real guarantee.
     /// </summary>
     public sealed class GameFlowController
     {
@@ -24,29 +28,35 @@ namespace Hermit.Games
         public GameSession CurrentSession { get; private set; }
         public GameResult LastResult { get; private set; }
 
+        /// <summary>The active game's own engine. Typed as the generic
+        /// interface here on purpose — a presenter that needs game-specific
+        /// view state casts to the concrete engine type it already knows it is
+        /// hosting (see Hermit.Runtime's per-game host classes). Null outside
+        /// Playing/Ending.</summary>
+        public IGameEngine CurrentEngine { get; private set; }
+
         public event Action<GameLifecycleState> StateChanged;
         public event Action<GameResult> ResultReady;
 
-        private IGameEngine _engine;
-        private GameRegistration _registration;
+        private GameDefinition _definition;
         private GameContext _context;
 
-        public void Start(GameRegistration registration, GameContext context)
+        public void Start(GameDefinition definition, GameContext context)
         {
             if (State != GameLifecycleState.Idle && State != GameLifecycleState.Results)
             {
                 throw new InvalidOperationException($"Cannot start a game while in state {State}.");
             }
 
-            _registration = registration ?? throw new ArgumentNullException(nameof(registration));
+            _definition = definition ?? throw new ArgumentNullException(nameof(definition));
             _context = context ?? throw new ArgumentNullException(nameof(context));
 
             SetState(GameLifecycleState.Preparing);
 
-            _engine = _registration.CreateEngine();
-            CurrentSession = new GameSession(_registration.Definition.GameId);
-            _engine.Begin(_context, _registration.Definition, CurrentSession);
-            _context.Analytics.GameStarted(_registration.Definition.GameId, CurrentSession.SessionId);
+            CurrentEngine = _definition.CreateEngine();
+            CurrentSession = new GameSession(_definition.GameId);
+            CurrentEngine.Begin(_context, _definition, CurrentSession);
+            _context.Analytics.GameStarted(_definition.GameId, CurrentSession.SessionId);
 
             SetState(GameLifecycleState.Playing);
         }
@@ -59,9 +69,9 @@ namespace Hermit.Games
             }
 
             CurrentSession.ElapsedSeconds += deltaSeconds;
-            _engine.Tick(deltaSeconds);
+            CurrentEngine.Tick(deltaSeconds);
 
-            if (_engine.IsFinished)
+            if (CurrentEngine.IsFinished)
             {
                 Finish(completed: true);
             }
@@ -86,9 +96,9 @@ namespace Hermit.Games
 
             // Start() already accepts Results as a starting state (see its guard
             // above) — restarting is just starting again with the same
-            // registration/context, going straight to Preparing without a
+            // definition/context, going straight to Preparing without a
             // visible Idle flicker in between.
-            Start(_registration, _context);
+            Start(_definition, _context);
         }
 
         public void AcknowledgeResults()
@@ -98,8 +108,8 @@ namespace Hermit.Games
                 return;
             }
 
-            _engine = null;
-            _registration = null;
+            CurrentEngine = null;
+            _definition = null;
             _context = null;
             CurrentSession = null;
             SetState(GameLifecycleState.Idle);
@@ -109,8 +119,8 @@ namespace Hermit.Games
         {
             SetState(GameLifecycleState.Ending);
 
-            LastResult = _engine.BuildResult(completed);
-            _engine.Cleanup();
+            LastResult = CurrentEngine.BuildResult(completed);
+            CurrentEngine.Cleanup();
 
             if (completed)
             {

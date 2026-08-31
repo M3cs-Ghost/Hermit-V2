@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using NUnit.Framework;
 using Hermit.Games;
 using Hermit.Games.Analytics;
@@ -11,30 +10,13 @@ namespace Hermit.Tests.EditMode
     {
         private static GameContext NewContext() => new GameContext(NullGameAnalyticsSink.Instance, new Random(0));
 
-        /// <summary>Builds a registration for a fresh FakeGameDefinition, along with
-        /// the list every engine it ever creates is appended to (one entry per
-        /// Start/Restart call), so tests can assert on engine-creation counts and
-        /// per-instance call counts.</summary>
-        private static (GameRegistration registration, List<FakeGameEngine> engines) NewFakeRegistration(int ticksToFinish)
-        {
-            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game");
-            var engines = new List<FakeGameEngine>();
-            var registration = new GameRegistration(definition, () =>
-            {
-                var engine = new FakeGameEngine(ticksToFinish);
-                engines.Add(engine);
-                return engine;
-            });
-            return (registration, engines);
-        }
-
         [Test]
         public void Start_TransitionsIdleToPlaying_AndCreatesASession()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(3);
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 3);
 
-            controller.Start(registration, NewContext());
+            controller.Start(definition, NewContext());
 
             Assert.AreEqual(GameLifecycleState.Playing, controller.State);
             Assert.IsNotNull(controller.CurrentSession);
@@ -45,8 +27,8 @@ namespace Hermit.Tests.EditMode
         public void Tick_KeepsPlayingUntilEngineFinishes_ThenMovesToResults()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(3);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 3);
+            controller.Start(definition, NewContext());
 
             controller.Tick(0.1f);
             Assert.AreEqual(GameLifecycleState.Playing, controller.State);
@@ -65,12 +47,12 @@ namespace Hermit.Tests.EditMode
         public void ResultReady_FiresExactlyOnce_WithTheFinalResult()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(1);
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 1);
             GameResult received = null;
             var fireCount = 0;
             controller.ResultReady += r => { received = r; fireCount++; };
 
-            controller.Start(registration, NewContext());
+            controller.Start(definition, NewContext());
             controller.Tick(0.1f);
 
             Assert.AreEqual(1, fireCount);
@@ -81,8 +63,8 @@ namespace Hermit.Tests.EditMode
         public void Abort_WhilePlaying_ProducesAnIncompleteResult()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(10);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 10);
+            controller.Start(definition, NewContext());
 
             controller.Tick(0.1f);
             controller.Abort();
@@ -103,8 +85,8 @@ namespace Hermit.Tests.EditMode
         public void AcknowledgeResults_ReturnsToIdle_AndAllowsStartingAgain()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(1);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 1);
+            controller.Start(definition, NewContext());
             controller.Tick(0.1f);
 
             controller.AcknowledgeResults();
@@ -112,7 +94,7 @@ namespace Hermit.Tests.EditMode
             Assert.AreEqual(GameLifecycleState.Idle, controller.State);
             Assert.IsNull(controller.CurrentSession);
 
-            controller.Start(registration, NewContext());
+            controller.Start(definition, NewContext());
             Assert.AreEqual(GameLifecycleState.Playing, controller.State);
         }
 
@@ -120,8 +102,8 @@ namespace Hermit.Tests.EditMode
         public void Restart_FromResults_CreatesABrandNewEngineAndFreshSession()
         {
             var controller = new GameFlowController();
-            var (registration, engines) = NewFakeRegistration(1);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 1);
+            controller.Start(definition, NewContext());
             var firstSessionId = controller.CurrentSession.SessionId;
             controller.Tick(0.1f);
 
@@ -130,28 +112,43 @@ namespace Hermit.Tests.EditMode
             Assert.AreEqual(GameLifecycleState.Playing, controller.State);
             Assert.AreNotEqual(firstSessionId, controller.CurrentSession.SessionId);
             Assert.AreEqual(0, controller.CurrentSession.Score);
-            Assert.AreEqual(2, engines.Count, "Restart must create a fresh engine instance, not reuse the finished one.");
+            Assert.AreEqual(2, definition.EnginesCreatedCount, "Restart must create a fresh engine instance, not reuse the finished one.");
         }
 
         [Test]
         public void Cleanup_IsCalledExactlyOnce_OnFinish()
         {
             var controller = new GameFlowController();
-            var (registration, engines) = NewFakeRegistration(1);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 1);
+            controller.Start(definition, NewContext());
             controller.Tick(0.1f);
 
-            Assert.AreEqual(1, engines[0].CleanupCallCount);
+            Assert.AreEqual(1, definition.LastCreatedEngine.CleanupCallCount);
+        }
+
+        [Test]
+        public void CurrentEngine_IsExposed_WhilePlaying_AndClearedAfterAcknowledge()
+        {
+            var controller = new GameFlowController();
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 1);
+
+            controller.Start(definition, NewContext());
+            Assert.IsNotNull(controller.CurrentEngine);
+            Assert.AreSame(definition.LastCreatedEngine, controller.CurrentEngine);
+
+            controller.Tick(0.1f);
+            controller.AcknowledgeResults();
+            Assert.IsNull(controller.CurrentEngine);
         }
 
         [Test]
         public void Start_WhileAlreadyPlaying_Throws()
         {
             var controller = new GameFlowController();
-            var (registration, _) = NewFakeRegistration(10);
-            controller.Start(registration, NewContext());
+            var definition = FakeGameDefinition.CreateInMemory("fake_game", "Fake Game", ticksToFinish: 10);
+            controller.Start(definition, NewContext());
 
-            Assert.Throws<InvalidOperationException>(() => controller.Start(registration, NewContext()));
+            Assert.Throws<InvalidOperationException>(() => controller.Start(definition, NewContext()));
         }
 
         [Test]

@@ -33,5 +33,21 @@ namespace Hermit.Tests.EditMode
             Assert.IsNotNull(result.Metadata);
             Assert.AreEqual(0, result.Metadata.Count);
         }
+
+        [Test]
+        public void ContentSetIdAndSchemaVersion_DefaultToEmptyAndZero_ForAGameWithNoContentSetConcept()
+        {
+            var result = new GameResult("g", "s", 0, 0, 0, 0f, true);
+            Assert.AreEqual(string.Empty, result.ContentSetId);
+            Assert.AreEqual(0, result.ContentSchemaVersion);
+        }
+
+        [Test]
+        public void ContentSetIdAndSchemaVersion_AreCarriedThrough_WhenProvided()
+        {
+            var result = new GameResult("g", "s", 0, 0, 0, 0f, true, contentSetId: "c5_sample", contentSchemaVersion: 2);
+            Assert.AreEqual("c5_sample", result.ContentSetId);
+            Assert.AreEqual(2, result.ContentSchemaVersion);
+        }
     }
 }

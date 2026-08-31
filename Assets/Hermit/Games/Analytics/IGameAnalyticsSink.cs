@@ -8,8 +8,13 @@ namespace Hermit.Games.Analytics
     public interface IGameAnalyticsSink
     {
         void GameStarted(string gameId, string sessionId);
-        void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex);
-        void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds);
+
+        /// <summary>contentVersion is the presented question's own
+        /// QuestionDefinition.ContentVersion (added in C6) — 0 for a game with
+        /// no content-set concept.</summary>
+        void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex, int contentVersion);
+
+        void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds, int contentVersion);
         void GameCompleted(GameResult result);
         void GameAborted(GameResult result);
     }

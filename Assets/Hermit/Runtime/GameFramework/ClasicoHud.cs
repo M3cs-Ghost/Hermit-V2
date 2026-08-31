@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Hermit.Games;
 using Hermit.Games.Clasico;
@@ -9,11 +8,17 @@ using Hermit.Games.Clasico;
 namespace Hermit.Runtime.GameFramework
 {
     /// <summary>
-    /// Presentation only. Builds the three screens the vertical slice needs
-    /// (Idle / Playing / Results) and exposes them as plain render calls plus
-    /// input events — it never touches GameFlowController, GameRegistry, or
-    /// any Networking type directly. <see cref="ClasicoVerticalSliceInstaller"/>
-    /// is the only thing that wires this to the framework.
+    /// Presentation only. Builds Clasico's two in-game screens (Playing /
+    /// Results) and exposes them as plain render calls plus input events — it
+    /// never touches GameFlowController, GameRegistry, or any Networking type
+    /// directly. <see cref="ClasicoGameHost"/> is the only thing that wires
+    /// this to the framework.
+    ///
+    /// C6 removed the Idle screen/"Jugar" button this used to own in C5 — the
+    /// game selector (<see cref="GameSelectorHud"/>) is now the single place a
+    /// player chooses to play Clasico, so a second, game-local "start" screen
+    /// would have been a redundant step. Both panels below start inactive;
+    /// ClasicoGameHost.Show() activates Playing immediately.
     ///
     /// This is where "UI concreta" lives, deliberately outside Hermit.Games —
     /// see Docs/C5_GAME_FRAMEWORK.md, "Where the UI lives".
@@ -22,13 +27,11 @@ namespace Hermit.Runtime.GameFramework
     {
         private const int MaxOptionButtons = 4;
 
-        public event Action PlayRequested;
         public event Action<int> AnswerSelected;
         public event Action AbortRequested;
         public event Action RestartRequested;
         public event Action ExitToIdleRequested;
 
-        private RectTransform _idlePanel;
         private RectTransform _playingPanel;
         private RectTransform _resultsPanel;
 
@@ -42,8 +45,6 @@ namespace Hermit.Runtime.GameFramework
 
         private Text _resultsTitleText;
         private Text _resultsSummaryText;
-
-        private Button _playButton;
         private Button _restartButton;
         private Button _exitButton;
 
@@ -53,31 +54,27 @@ namespace Hermit.Runtime.GameFramework
 
         public void Build(Transform canvasRoot)
         {
-            BuildIdlePanel(canvasRoot);
             BuildPlayingPanel(canvasRoot);
             BuildResultsPanel(canvasRoot);
-            ShowIdle();
-        }
-
-        public void ShowIdle()
-        {
-            _idlePanel.gameObject.SetActive(true);
             _playingPanel.gameObject.SetActive(false);
             _resultsPanel.gameObject.SetActive(false);
-            Select(_playButton);
         }
 
         public void ShowPlaying()
         {
-            _idlePanel.gameObject.SetActive(false);
             _playingPanel.gameObject.SetActive(true);
             _resultsPanel.gameObject.SetActive(false);
             _feedbackText.text = string.Empty;
         }
 
+        public void Hide()
+        {
+            _playingPanel.gameObject.SetActive(false);
+            _resultsPanel.gameObject.SetActive(false);
+        }
+
         public void ShowResults(GameResult result)
         {
-            _idlePanel.gameObject.SetActive(false);
             _playingPanel.gameObject.SetActive(false);
             _resultsPanel.gameObject.SetActive(true);
 
@@ -89,7 +86,7 @@ namespace Hermit.Runtime.GameFramework
                 $"Precisión: {result.AccuracyPercent:0.0}%\n" +
                 $"Duración: {result.DurationSeconds:0.0}s";
 
-            Select(_restartButton);
+            RuntimeUIFactory.Select(_restartButton);
         }
 
         public void RenderQuestion(ClasicoQuestionView view, int score)
@@ -118,10 +115,10 @@ namespace Hermit.Runtime.GameFramework
             // A fresh question means a fresh EventSystem selection — without this,
             // keyboard Navigate/Submit have nothing to operate from the moment a
             // new question appears (see Docs/C5_GAME_FRAMEWORK.md, "Keyboard
-            // navigation fix"). Only called once per question by the installer,
+            // navigation fix"). Only called once per question by the host,
             // never every frame, so it never fights the player's own navigation
             // within the same question.
-            Select(firstActiveOption);
+            RuntimeUIFactory.Select(firstActiveOption);
         }
 
         public void RenderReveal(int selectedIndex, int correctIndex, int score)
@@ -148,33 +145,6 @@ namespace Hermit.Runtime.GameFramework
 
             _feedbackText.text = selectedIndex == correctIndex ? "¡Correcto!" : "Incorrecto";
             _feedbackText.color = selectedIndex == correctIndex ? Color.green : Color.red;
-        }
-
-        private void BuildIdlePanel(Transform canvasRoot)
-        {
-            _idlePanel = RuntimeUIFactory.CreatePanel(canvasRoot, "IdlePanel", new Color(0.08f, 0.09f, 0.12f, 1f));
-
-            RuntimeUIFactory.CreateText(
-                _idlePanel, "Title", "Clásico", 56, TextAnchor.MiddleCenter, Color.white,
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 80), new Vector2(600, 80));
-
-            RuntimeUIFactory.CreateText(
-                _idlePanel, "Subtitle", "C5 vertical slice — contenido de muestra", 20, TextAnchor.MiddleCenter,
-                new Color(0.8f, 0.8f, 0.8f, 1f),
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 20), new Vector2(700, 40));
-
-            _playButton = RuntimeUIFactory.CreateButton(
-                _idlePanel, "PlayButton", "Jugar",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -60), new Vector2(240, 64));
-            _playButton.onClick.AddListener(() => PlayRequested?.Invoke());
-
-            // Fallback for the very first frame, before ShowIdle()'s explicit
-            // Select() call below ever runs (EventSystem.ActivateModule() reads
-            // this if nothing is selected yet).
-            if (EventSystem.current != null)
-            {
-                EventSystem.current.firstSelectedGameObject = _playButton.gameObject;
-            }
         }
 
         private void BuildPlayingPanel(Transform canvasRoot)
@@ -221,7 +191,7 @@ namespace Hermit.Runtime.GameFramework
             // relying on Selectable's spatial "Automatic" navigation — simple,
             // predictable, and immune to the Abort button (positioned well away
             // from the options) being picked as a confusing neighbor.
-            ChainVertical(_optionButtons.ToArray());
+            RuntimeUIFactory.ChainVertical(_optionButtons.ToArray());
 
             _feedbackText = RuntimeUIFactory.CreateText(
                 _playingPanel, "Feedback", string.Empty, 24, TextAnchor.MiddleCenter, Color.white,
@@ -250,42 +220,7 @@ namespace Hermit.Runtime.GameFramework
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(130, -140), new Vector2(220, 56));
             _exitButton.onClick.AddListener(() => ExitToIdleRequested?.Invoke());
 
-            ChainHorizontal(_restartButton, _exitButton);
-        }
-
-        private static void Select(Selectable selectable)
-        {
-            var eventSystem = EventSystem.current;
-            if (eventSystem == null || selectable == null)
-            {
-                return;
-            }
-
-            eventSystem.SetSelectedGameObject(selectable.gameObject);
-        }
-
-        private static void ChainVertical(IReadOnlyList<Selectable> selectables)
-        {
-            for (var i = 0; i < selectables.Count; i++)
-            {
-                var nav = selectables[i].navigation;
-                nav.mode = Navigation.Mode.Explicit;
-                nav.selectOnUp = i > 0 ? selectables[i - 1] : null;
-                nav.selectOnDown = i < selectables.Count - 1 ? selectables[i + 1] : null;
-                selectables[i].navigation = nav;
-            }
-        }
-
-        private static void ChainHorizontal(params Selectable[] selectables)
-        {
-            for (var i = 0; i < selectables.Length; i++)
-            {
-                var nav = selectables[i].navigation;
-                nav.mode = Navigation.Mode.Explicit;
-                nav.selectOnLeft = i > 0 ? selectables[i - 1] : null;
-                nav.selectOnRight = i < selectables.Length - 1 ? selectables[i + 1] : null;
-                selectables[i].navigation = nav;
-            }
+            RuntimeUIFactory.ChainHorizontal(_restartButton, _exitButton);
         }
     }
 }

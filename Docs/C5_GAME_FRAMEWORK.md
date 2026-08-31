@@ -116,6 +116,12 @@ instance anywhere: nothing can reach "the games" as a hidden singleton.
 type — it only ever calls through `IGameEngine`/`GameRegistration`. See
 "Extensibility test".
 
+**C6 update:** `GameRegistration` was dropped — `GameDefinition.CreateEngine()`
+replaced the externally-supplied factory closure, so wrapping a definition a
+second time stopped adding a real guarantee. `GameRegistry`/`GameFlowController`
+now hold/take `GameDefinition` directly. See
+`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`, "Registration model".
+
 ## Content separation
 
 `QuestionDefinition`/`AnswerOption` are plain `[Serializable]` classes (not
@@ -440,10 +446,12 @@ and evidence log at the top of this section.
   game with no right/wrong) may find them insufficient — leave them unused
   rather than force-fit, and revisit the session shape only once a second
   *real* game actually needs something they can't express.
-- The vertical slice's `ClasicoGameDefinition`/`C5SampleQuestions` are loaded
-  by fixed `Resources.Load` path (mirroring `EnvironmentConfig_Development`'s
-  existing pattern from C4) — fine for one game; a real game-select menu
-  would enumerate a `GameRegistry` instead of hardcoding a path per game.
+- ~~The vertical slice's `ClasicoGameDefinition`/`C5SampleQuestions` are loaded
+  by fixed `Resources.Load` path~~ — **resolved in C6**: a single
+  `GameCatalog` ScriptableObject (one `Resources.Load`, not one per game)
+  now holds every registered `GameDefinition`, and a real `GameSelectorHud`
+  enumerates `GameRegistry` instead of hardcoding a path. See
+  `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`, "Resources strategy".
 - During manual validation the user temporarily built with only
   `02_GameplaySandbox` enabled in `ProjectSettings/EditorBuildSettings.asset`
   (via a throwaway `Windows C5 Sandbox` Build Profile), to test the vertical

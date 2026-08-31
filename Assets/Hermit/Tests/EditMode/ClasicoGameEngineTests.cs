@@ -1,5 +1,7 @@
 using System;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using Hermit.Games;
 using Hermit.Games.Analytics;
 using Hermit.Games.Clasico;
@@ -35,7 +37,7 @@ namespace Hermit.Tests.EditMode
                 questionCount < 0 ? questions.Length : questionCount,
                 timePerQuestion, pointsPerCorrectAnswer: 100, maxSpeedBonusPoints: 0, feedbackDisplaySeconds: feedbackSeconds);
 
-            var context = new GameContext(NullGameAnalyticsSink.Instance, new Random(0));
+            var context = new GameContext(NullGameAnalyticsSink.Instance, new System.Random(0));
             var session = new GameSession(definition.GameId);
             var engine = new ClasicoGameEngine();
             engine.Begin(context, definition, session);
@@ -164,6 +166,8 @@ namespace Hermit.Tests.EditMode
             Assert.AreEqual(0, result.Incorrect);
             Assert.AreEqual(12.5f, result.DurationSeconds, 0.001f);
             Assert.IsTrue(result.Completed);
+            Assert.AreEqual("set", result.ContentSetId);
+            Assert.AreEqual(1, result.ContentSchemaVersion);
         }
 
         [Test]
@@ -171,6 +175,17 @@ namespace Hermit.Tests.EditMode
         {
             var (engine, _) = BeginEngine(Array.Empty<QuestionDefinition>());
             Assert.IsTrue(engine.IsFinished);
+        }
+
+        [Test]
+        public void Begin_WithInvalidContent_LogsAWarning_ButDoesNotThrow()
+        {
+            var badQuestion = SingleOption("bad_q", true);
+            badQuestion.Options = Array.Empty<AnswerOption>(); // triggers "no answer options"
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(".*ContentValidation.*bad_q.*"));
+
+            Assert.DoesNotThrow(() => BeginEngine(new[] { badQuestion }));
         }
     }
 }

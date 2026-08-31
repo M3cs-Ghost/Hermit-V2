@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Hermit.Core;
 using Hermit.Games.Content;
 
 namespace Hermit.Games.Clasico
@@ -64,6 +65,11 @@ namespace Hermit.Games.Clasico
             _definition = (ClasicoGameDefinition)definition;
             _session = session;
 
+            foreach (var issue in ContentValidator.Validate(_definition.QuestionSet))
+            {
+                HermitLog.Warning($"[ContentValidation] {issue}");
+            }
+
             var provider = new QuestionSetContentProvider(_definition.QuestionSet);
             _questions = provider.DrawQuestions(_definition.QuestionCount, context.Rng);
             _questionIndex = -1;
@@ -102,7 +108,7 @@ namespace Hermit.Games.Clasico
                 _session.Incorrect++;
             }
 
-            _context.Analytics.AnswerSubmitted(_definition.GameId, _session.SessionId, _questions[_questionIndex].Id, correct, _questionTimer);
+            _context.Analytics.AnswerSubmitted(_definition.GameId, _session.SessionId, _questions[_questionIndex].Id, correct, _questionTimer, _questions[_questionIndex].ContentVersion);
 
             _revealTimer = 0f;
             _phase = Phase.Revealing;
@@ -135,6 +141,7 @@ namespace Hermit.Games.Clasico
 
         public GameResult BuildResult(bool completed)
         {
+            var questionSet = _definition.QuestionSet;
             return new GameResult(
                 _definition.GameId,
                 _session.SessionId,
@@ -142,7 +149,9 @@ namespace Hermit.Games.Clasico
                 _session.Correct,
                 _session.Incorrect,
                 _session.ElapsedSeconds,
-                completed);
+                completed,
+                questionSet != null ? questionSet.SetId : string.Empty,
+                questionSet != null ? questionSet.SchemaVersion : 0);
         }
 
         public void Cleanup()
@@ -170,7 +179,7 @@ namespace Hermit.Games.Clasico
             _phase = Phase.AwaitingAnswer;
 
             CurrentView = new ClasicoQuestionView(question, _shuffledOptions, _questionIndex, _questions.Count);
-            _context.Analytics.QuestionPresented(_definition.GameId, _session.SessionId, question.Id, _questionIndex);
+            _context.Analytics.QuestionPresented(_definition.GameId, _session.SessionId, question.Id, _questionIndex, question.ContentVersion);
         }
 
         private static AnswerOption[] Shuffle(AnswerOption[] source, Random rng)

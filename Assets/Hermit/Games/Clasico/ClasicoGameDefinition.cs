@@ -24,6 +24,8 @@ namespace Hermit.Games.Clasico
         public int MaxSpeedBonusPoints => _maxSpeedBonusPoints;
         public float FeedbackDisplaySeconds => _feedbackDisplaySeconds;
 
+        public override IGameEngine CreateEngine() => new ClasicoGameEngine();
+
         /// <summary>Builds a definition from code instead of an Inspector asset —
         /// used by tests and by anything that needs a throwaway configuration.</summary>
         public static ClasicoGameDefinition CreateInMemory(

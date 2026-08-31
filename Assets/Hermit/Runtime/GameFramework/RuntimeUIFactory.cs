@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -147,6 +148,47 @@ namespace Hermit.Runtime.GameFramework
             rect.anchorMax = Vector2.one;
             rect.anchoredPosition = Vector2.zero;
             rect.sizeDelta = Vector2.zero;
+        }
+
+        /// <summary>Moves the EventSystem's selection explicitly. Shared by every
+        /// Hud in this namespace — the C5 keyboard-navigation bug was exactly a
+        /// missing call to this on every screen/question change (see
+        /// Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md, "Input"), so every new
+        /// screen (the C6 selector included) reuses this one path rather than
+        /// re-deriving the fix.</summary>
+        public static void Select(Selectable selectable)
+        {
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null || selectable == null)
+            {
+                return;
+            }
+
+            eventSystem.SetSelectedGameObject(selectable.gameObject);
+        }
+
+        public static void ChainVertical(IReadOnlyList<Selectable> selectables)
+        {
+            for (var i = 0; i < selectables.Count; i++)
+            {
+                var nav = selectables[i].navigation;
+                nav.mode = Navigation.Mode.Explicit;
+                nav.selectOnUp = i > 0 ? selectables[i - 1] : null;
+                nav.selectOnDown = i < selectables.Count - 1 ? selectables[i + 1] : null;
+                selectables[i].navigation = nav;
+            }
+        }
+
+        public static void ChainHorizontal(params Selectable[] selectables)
+        {
+            for (var i = 0; i < selectables.Length; i++)
+            {
+                var nav = selectables[i].navigation;
+                nav.mode = Navigation.Mode.Explicit;
+                nav.selectOnLeft = i > 0 ? selectables[i - 1] : null;
+                nav.selectOnRight = i < selectables.Length - 1 ? selectables[i + 1] : null;
+                selectables[i].navigation = nav;
+            }
         }
     }
 }

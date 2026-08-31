@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Hermit.Runtime
 {
@@ -10,6 +11,12 @@ namespace Hermit.Runtime
     ///
     /// Credentials are typed at runtime only, never serialized to a scene or
     /// asset, and the password field is masked.
+    ///
+    /// C6 added a collapse toggle (starts collapsed): this panel's fixed
+    /// top-left Rect used to sit directly on top of the new game selector's
+    /// top-left content. Press F1 to expand it for C4 regression checks —
+    /// still Development-only (see HermitRuntimeInstaller), just not visible
+    /// by default anymore.
     /// </summary>
     public sealed class C4DebugPanel : MonoBehaviour
     {
@@ -19,18 +26,40 @@ namespace Hermit.Runtime
         private string _lastResult = string.Empty;
         private string _lastErrorMessage = string.Empty;
         private bool _busy;
+        private bool _collapsed = true;
 
         public void Initialize(HermitAppContext context)
         {
             _context = context;
         }
 
+        private void Update()
+        {
+            if (Keyboard.current != null && Keyboard.current.f1Key.wasPressedThisFrame)
+            {
+                _collapsed = !_collapsed;
+            }
+        }
+
         private void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(12, 12, 440, 640), GUI.skin.box);
+            if (_collapsed)
+            {
+                GUI.Label(new Rect(12, 12, 220, 20), "C4 Debug hidden — press F1");
+                return;
+            }
+
+            GUILayout.BeginArea(new Rect(12, 12, 440, 660), GUI.skin.box);
 
             var titleStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, fontSize = 14 };
             GUILayout.Label("C4 Debug / Temporary — not final UI", titleStyle);
+
+            if (GUILayout.Button("Hide (F1)"))
+            {
+                _collapsed = true;
+                GUILayout.EndArea();
+                return;
+            }
 
             if (_context == null)
             {

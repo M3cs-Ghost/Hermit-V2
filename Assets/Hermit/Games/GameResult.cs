@@ -7,7 +7,12 @@ namespace Hermit.Games
     /// the shape a future backend submission will use, it is only what this
     /// vertical slice needs to prove a game can report a result without
     /// coupling to UI or to Networking. No coins, no rewards, no leaderboard
-    /// fields (explicitly out of scope for C5).
+    /// fields (explicitly out of scope through C6).
+    ///
+    /// ContentSetId/ContentSchemaVersion were added in C6 so a result can
+    /// answer "which content set, at which schema shape, produced this score"
+    /// — the minimum needed later for "what did this student actually see".
+    /// Both default to empty/0 for a game that has no content-set concept.
     /// </summary>
     public sealed class GameResult
     {
@@ -26,6 +31,9 @@ namespace Hermit.Games
         /// player left early (Abort).</summary>
         public bool Completed { get; }
 
+        public string ContentSetId { get; }
+        public int ContentSchemaVersion { get; }
+
         public IReadOnlyDictionary<string, string> Metadata { get; }
 
         public GameResult(
@@ -36,6 +44,8 @@ namespace Hermit.Games
             int incorrect,
             float durationSeconds,
             bool completed,
+            string contentSetId = "",
+            int contentSchemaVersion = 0,
             IReadOnlyDictionary<string, string> metadata = null)
         {
             GameId = gameId;
@@ -45,6 +55,8 @@ namespace Hermit.Games
             Incorrect = incorrect;
             DurationSeconds = durationSeconds;
             Completed = completed;
+            ContentSetId = contentSetId ?? string.Empty;
+            ContentSchemaVersion = contentSchemaVersion;
             Metadata = metadata ?? EmptyMetadata;
 
             var total = correct + incorrect;

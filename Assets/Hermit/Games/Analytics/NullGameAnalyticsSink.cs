@@ -14,11 +14,11 @@ namespace Hermit.Games.Analytics
         {
         }
 
-        public void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex)
+        public void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex, int contentVersion)
         {
         }
 
-        public void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds)
+        public void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds, int contentVersion)
         {
         }
 

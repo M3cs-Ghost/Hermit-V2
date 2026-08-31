@@ -14,6 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   _gameId: "clasico"
   _displayName: "Clásico"
+  _shortDescription: "Responde preguntas basicas de contabilidad contra el reloj."
+  _isEnabled: 1
+  _displaySortOrder: 0
   _questionSet: {fileID: 11400000, guid: 8ffcb0a3bb6e262c8e40a2be0e085dbc, type: 2}
   _questionCount: 10
   _timePerQuestionSeconds: 8

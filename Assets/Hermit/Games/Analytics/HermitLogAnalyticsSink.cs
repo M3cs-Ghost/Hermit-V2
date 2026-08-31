@@ -12,14 +12,14 @@ namespace Hermit.Games.Analytics
             HermitLog.Info($"[Analytics] game_started game={gameId} session={sessionId}");
         }
 
-        public void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex)
+        public void QuestionPresented(string gameId, string sessionId, string questionId, int questionIndex, int contentVersion)
         {
-            HermitLog.Info($"[Analytics] question_presented game={gameId} session={sessionId} question={questionId} index={questionIndex}");
+            HermitLog.Info($"[Analytics] question_presented game={gameId} session={sessionId} question={questionId} index={questionIndex} contentVersion={contentVersion}");
         }
 
-        public void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds)
+        public void AnswerSubmitted(string gameId, string sessionId, string questionId, bool correct, float answerTimeSeconds, int contentVersion)
         {
-            HermitLog.Info($"[Analytics] answer_submitted game={gameId} session={sessionId} question={questionId} correct={correct} timeSec={answerTimeSeconds:0.00}");
+            HermitLog.Info($"[Analytics] answer_submitted game={gameId} session={sessionId} question={questionId} correct={correct} timeSec={answerTimeSeconds:0.00} contentVersion={contentVersion}");
         }
 
         public void GameCompleted(GameResult result)

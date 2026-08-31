@@ -12,28 +12,34 @@ using Hermit.Runtime.GameFramework;
 namespace Hermit.Tests.PlayMode
 {
     /// <summary>
-    /// Exercises the real, composed vertical slice (installer + HUD + framework
-    /// + the shipped Resources content/definition assets) end to end, driven by
-    /// invoking the actual UI Button.onClick events a player's click would fire
-    /// — not by calling GameFlowController directly — so this test also proves
-    /// ClasicoHud and ClasicoVerticalSliceInstaller are wired correctly.
+    /// Exercises the real, composed C6 runtime (GameSessionInstaller + the
+    /// generic selector + ClasicoGameHost/ClasicoHud + the shipped
+    /// Resources/GameCatalog + ClasicoGameDefinition/content assets) end to
+    /// end, driven by invoking the actual UI Button.onClick events a player's
+    /// click would fire — not by calling GameFlowController directly — so
+    /// this test also proves the selector and Clasico's host are wired
+    /// correctly together.
+    ///
+    /// C6 changed the entry point: there is no more in-game "Jugar" button —
+    /// launching Clasico now means clicking its entry in the selector
+    /// ("Game_clasico").
     ///
     /// What this does NOT cover: an actual mouse/touch event routed through the
     /// Input System's raycaster. That is the manual test checklist's job (see
-    /// Docs/C5_GAME_FRAMEWORK.md) — simulating real pointer input reliably in an
-    /// automated PlayMode run is its own source of flakiness this slice does not
-    /// need to take on.
+    /// Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md) — simulating real pointer
+    /// input reliably in an automated PlayMode run is its own source of
+    /// flakiness this slice does not need to take on.
     /// </summary>
     public class ClasicoPlayModeTests
     {
         private GameObject _root;
-        private ClasicoVerticalSliceInstaller _installer;
+        private GameSessionInstaller _installer;
 
         [UnitySetUp]
         public IEnumerator SetUp()
         {
-            _root = new GameObject("ClasicoVerticalSliceTest");
-            _installer = _root.AddComponent<ClasicoVerticalSliceInstaller>();
+            _root = new GameObject("GameSessionTest");
+            _installer = _root.AddComponent<GameSessionInstaller>();
             yield return null;
         }
 
@@ -47,25 +53,6 @@ namespace Hermit.Tests.PlayMode
         private Button FindButton(string name) => _root.GetComponentsInChildren<Button>(true).First(b => b.name == name);
         private Text FindText(string name) => _root.GetComponentsInChildren<Text>(true).First(t => t.name == name);
 
-        private IEnumerator PlayThroughToResults()
-        {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
-
-            const int maxQuestions = 20;
-            var iterations = 0;
-            while (_installer.FlowController.State == GameLifecycleState.Playing && iterations < maxQuestions)
-            {
-                FindButton("Option0").onClick.Invoke();
-                yield return new WaitForSeconds(1.0f);
-                iterations++;
-            }
-        }
-
-        /// <summary>The active object must exist and actually be enabled — a
-        /// selection left pointing at a deactivated GameObject (e.g. a button
-        /// from a panel that was just hidden) is exactly the keyboard-navigation
-        /// bug this suite exists to catch.</summary>
         private static GameObject AssertValidSelection(string expectedName = null)
         {
             var selected = EventSystem.current.currentSelectedGameObject;
@@ -79,11 +66,31 @@ namespace Hermit.Tests.PlayMode
             return selected;
         }
 
+        private IEnumerator LaunchClasico()
+        {
+            FindButton("Game_clasico").onClick.Invoke();
+            yield return null;
+        }
+
+        private IEnumerator PlayThroughToResults()
+        {
+            yield return LaunchClasico();
+
+            const int maxQuestions = 20;
+            var iterations = 0;
+            while (_installer.FlowController.State == GameLifecycleState.Playing && iterations < maxQuestions)
+            {
+                FindButton("Option0").onClick.Invoke();
+                yield return new WaitForSeconds(1.0f);
+                iterations++;
+            }
+        }
+
         [UnityTest]
-        public IEnumerator Installer_BuildsTheUI_StartingOnTheIdleScreen()
+        public IEnumerator Installer_BuildsTheUI_StartingOnTheSelectorScreen()
         {
             Assert.AreEqual(GameLifecycleState.Idle, _installer.FlowController.State);
-            Assert.IsNotNull(FindButton("PlayButton"));
+            Assert.IsNotNull(FindButton("Game_clasico"));
             yield break;
         }
 
@@ -99,20 +106,16 @@ namespace Hermit.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator IdleScreen_HasAVisibleInitialSelection()
+        public IEnumerator SelectorScreen_HasAVisibleInitialSelection()
         {
-            // Nothing has been clicked yet in this test — this specifically
-            // catches the bug where keyboard navigation had no starting point
-            // until the player used the mouse at least once.
-            AssertValidSelection("PlayButton");
+            AssertValidSelection("Game_clasico");
             yield break;
         }
 
         [UnityTest]
-        public IEnumerator ClickingPlay_StartsAGame_AndShowsAQuestion()
+        public IEnumerator LaunchingClasico_StartsAGame_AndShowsAQuestion()
         {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
 
             Assert.AreEqual(GameLifecycleState.Playing, _installer.FlowController.State);
             Assert.IsFalse(string.IsNullOrEmpty(FindText("Question").text));
@@ -122,8 +125,7 @@ namespace Hermit.Tests.PlayMode
         [UnityTest]
         public IEnumerator AdvancingToTheNextQuestion_KeepsASelectionOnAnActiveOption()
         {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
 
             FindButton("Option0").onClick.Invoke();
             yield return new WaitForSeconds(1.0f); // past FeedbackDisplaySeconds -> next question rendered
@@ -135,8 +137,7 @@ namespace Hermit.Tests.PlayMode
         [UnityTest]
         public IEnumerator AnsweringAQuestion_UpdatesScoreOrIncorrectCount()
         {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
 
             FindButton("Option0").onClick.Invoke();
             yield return null;
@@ -176,8 +177,7 @@ namespace Hermit.Tests.PlayMode
         [UnityTest]
         public IEnumerator Abort_DuringPlay_ReachesResults_AsIncomplete()
         {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
 
             FindButton("AbortButton").onClick.Invoke();
             yield return null;
@@ -188,10 +188,9 @@ namespace Hermit.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ExitFromResults_ReturnsToIdle_AndPlayCanStartAgain()
+        public IEnumerator ExitFromResults_ReturnsToTheSelector_AndClasicoCanLaunchAgain()
         {
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
             FindButton("AbortButton").onClick.Invoke();
             yield return null;
 
@@ -199,10 +198,9 @@ namespace Hermit.Tests.PlayMode
             yield return null;
 
             Assert.AreEqual(GameLifecycleState.Idle, _installer.FlowController.State);
-            AssertValidSelection("PlayButton");
+            AssertValidSelection("Game_clasico");
 
-            FindButton("PlayButton").onClick.Invoke();
-            yield return null;
+            yield return LaunchClasico();
             Assert.AreEqual(GameLifecycleState.Playing, _installer.FlowController.State);
         }
 
@@ -211,8 +209,8 @@ namespace Hermit.Tests.PlayMode
         {
             // A second installer (e.g. a scene reload in a real game) must reuse
             // the existing DontDestroyOnLoad EventSystem, not spawn another one.
-            var secondRoot = new GameObject("ClasicoVerticalSliceTest2");
-            secondRoot.AddComponent<ClasicoVerticalSliceInstaller>();
+            var secondRoot = new GameObject("GameSessionTest2");
+            secondRoot.AddComponent<GameSessionInstaller>();
             yield return null;
 
             Assert.AreEqual(1, Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length);

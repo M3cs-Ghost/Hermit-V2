@@ -8,15 +8,42 @@ namespace Hermit.Tests.EditMode.Fakes
     /// separate assembly) and implements GameDefinition/IGameEngine using only
     /// their public contract — no edit to GameFlowController, GameRegistry, or
     /// any Clasico type was needed to make it work. See
-    /// GameFrameworkExtensibilityTests and Docs/C5_GAME_FRAMEWORK.md.
+    /// GameFrameworkExtensibilityTests and Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md.
+    ///
+    /// C6 moved engine construction onto GameDefinition.CreateEngine() — config
+    /// (here, TicksToFinish) now lives on the definition and is read lazily in
+    /// Begin(), the same pattern ClasicoGameDefinition/ClasicoGameEngine already
+    /// use, instead of C5's externally-supplied factory closure.
     /// </summary>
     internal sealed class FakeGameDefinition : GameDefinition
     {
-        public static FakeGameDefinition CreateInMemory(string gameId, string displayName)
+        public int TicksToFinish { get; private set; } = 3;
+
+        /// <summary>Set once per CreateEngine() call — lets a test assert how
+        /// many engine instances this definition has produced (e.g. to prove
+        /// Restart creates a fresh one) and inspect the most recent one.</summary>
+        public int EnginesCreatedCount { get; private set; }
+        public FakeGameEngine LastCreatedEngine { get; private set; }
+
+        public static FakeGameDefinition CreateInMemory(
+            string gameId,
+            string displayName,
+            int ticksToFinish = 3,
+            bool isEnabled = true,
+            int displaySortOrder = 0)
         {
             var instance = CreateInstance<FakeGameDefinition>();
             instance.SetIdentity(gameId, displayName);
+            instance.SetSelectorMetadata(isEnabled, displaySortOrder);
+            instance.TicksToFinish = ticksToFinish;
             return instance;
+        }
+
+        public override IGameEngine CreateEngine()
+        {
+            EnginesCreatedCount++;
+            LastCreatedEngine = new FakeGameEngine();
+            return LastCreatedEngine;
         }
     }
 
@@ -25,17 +52,12 @@ namespace Hermit.Tests.EditMode.Fakes
     /// transition without pretending to be a real game.</summary>
     internal sealed class FakeGameEngine : IGameEngine
     {
-        private readonly int _ticksToFinish;
+        private int _ticksToFinish;
         private int _ticksSoFar;
         private GameSession _session;
 
         public int BeginCallCount { get; private set; }
         public int CleanupCallCount { get; private set; }
-
-        public FakeGameEngine(int ticksToFinish = 3)
-        {
-            _ticksToFinish = ticksToFinish;
-        }
 
         public bool IsFinished => _ticksSoFar >= _ticksToFinish;
 
@@ -43,6 +65,7 @@ namespace Hermit.Tests.EditMode.Fakes
         {
             BeginCallCount++;
             _session = session;
+            _ticksToFinish = ((FakeGameDefinition)definition).TicksToFinish;
             _ticksSoFar = 0;
         }
 
