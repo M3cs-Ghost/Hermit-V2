@@ -3,7 +3,8 @@
   "rootNamespace": "Hermit.Tests.EditMode",
   "references": [
     "Hermit.Core",
-    "Hermit.Networking"
+    "Hermit.Networking",
+    "Hermit.Games"
   ],
   "includePlatforms": [
     "Editor"

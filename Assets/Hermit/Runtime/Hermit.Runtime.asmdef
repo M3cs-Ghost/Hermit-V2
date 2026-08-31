@@ -3,7 +3,9 @@
     "rootNamespace": "Hermit.Runtime",
     "references": [
         "Hermit.Core",
-        "Hermit.Networking"
+        "Hermit.Networking",
+        "Hermit.Games",
+        "GUID:75469ad4d38634e559750d17036d5f7c"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

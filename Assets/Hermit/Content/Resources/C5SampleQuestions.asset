@@ -1,0 +1,167 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0c3b53545951718c0b3f32d6c694c23c, type: 3}
+  m_Name: C5SampleQuestions
+  m_EditorClassIdentifier:
+  _setId: "c5_sample"
+  _description: "C5 sample content — 10 preguntas básicas de contabilidad usadas para validar el Game Framework y el vertical slice de Clásico. NO es la biblioteca académica final."
+  _questions:
+  - Id: "activo_definicion"
+    Domain: "contabilidad"
+    Topic: "activo"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "¿Cuál de las siguientes opciones define mejor un Activo?"
+    Options:
+    - Text: "Un recurso controlado por la entidad del cual se esperan beneficios económicos futuros"
+      IsCorrect: 1
+    - Text: "Una obligación presente de la entidad con un tercero"
+      IsCorrect: 0
+    - Text: "La diferencia entre los ingresos y los gastos del período"
+      IsCorrect: 0
+    - Text: "El capital aportado por los socios"
+      IsCorrect: 0
+  - Id: "pasivo_definicion"
+    Domain: "contabilidad"
+    Topic: "pasivo"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "¿Cuál de las siguientes opciones define mejor un Pasivo?"
+    Options:
+    - Text: "Una obligación presente de la entidad, surgida de eventos pasados, cuya liquidación implica salida de recursos"
+      IsCorrect: 1
+    - Text: "Un recurso que generará beneficios económicos futuros"
+      IsCorrect: 0
+    - Text: "El valor residual de los activos después de restar el patrimonio"
+      IsCorrect: 0
+    - Text: "El efectivo disponible en caja y bancos"
+      IsCorrect: 0
+  - Id: "patrimonio_definicion"
+    Domain: "contabilidad"
+    Topic: "patrimonio"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "El Patrimonio de una entidad se calcula como"
+    Options:
+    - Text: "Activo menos Pasivo"
+      IsCorrect: 1
+    - Text: "Activo más Pasivo"
+      IsCorrect: 0
+    - Text: "Ingresos menos Gastos del ejercicio anterior"
+      IsCorrect: 0
+    - Text: "Pasivo menos Activo"
+      IsCorrect: 0
+  - Id: "ecuacion_contable"
+    Domain: "contabilidad"
+    Topic: "ecuacion_contable"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "¿Cuál es la forma correcta de la ecuación contable fundamental?"
+    Options:
+    - Text: "Activo = Pasivo + Patrimonio"
+      IsCorrect: 1
+    - Text: "Activo = Pasivo - Patrimonio"
+      IsCorrect: 0
+    - Text: "Patrimonio = Activo + Pasivo"
+      IsCorrect: 0
+    - Text: "Pasivo = Activo + Patrimonio"
+      IsCorrect: 0
+  - Id: "ingreso_definicion"
+    Domain: "contabilidad"
+    Topic: "ingreso"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "Un Ingreso, en términos contables, representa"
+    Options:
+    - Text: "Un incremento en los beneficios económicos durante el período, en forma de entrada de activos o disminución de pasivos"
+      IsCorrect: 1
+    - Text: "Una salida de efectivo para pagar obligaciones"
+      IsCorrect: 0
+    - Text: "Un aumento del pasivo de la entidad"
+      IsCorrect: 0
+    - Text: "La compra de un activo fijo"
+      IsCorrect: 0
+  - Id: "gasto_definicion"
+    Domain: "contabilidad"
+    Topic: "gasto"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "Un Gasto, en términos contables, representa"
+    Options:
+    - Text: "Una disminución en los beneficios económicos durante el período, en forma de salida de activos o aumento de pasivos"
+      IsCorrect: 1
+    - Text: "Un incremento del patrimonio de la entidad"
+      IsCorrect: 0
+    - Text: "El cobro de una cuenta por cobrar"
+      IsCorrect: 0
+    - Text: "Un aumento en el activo disponible"
+      IsCorrect: 0
+  - Id: "debito_naturaleza_activo"
+    Domain: "contabilidad"
+    Topic: "debito_credito"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "Un Activo aumenta normalmente registrando un movimiento de"
+    Options:
+    - Text: "Débito"
+      IsCorrect: 1
+    - Text: "Crédito"
+      IsCorrect: 0
+    - Text: "Débito y Crédito por igual"
+      IsCorrect: 0
+    - Text: "Ninguno, los activos no se registran con partida doble"
+      IsCorrect: 0
+  - Id: "credito_naturaleza_pasivo"
+    Domain: "contabilidad"
+    Topic: "debito_credito"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "Un Pasivo aumenta normalmente registrando un movimiento de"
+    Options:
+    - Text: "Crédito"
+      IsCorrect: 1
+    - Text: "Débito"
+      IsCorrect: 0
+    - Text: "Débito y Crédito por igual"
+      IsCorrect: 0
+    - Text: "Ninguno, los pasivos no se registran con partida doble"
+      IsCorrect: 0
+  - Id: "activo_ejemplo"
+    Domain: "contabilidad"
+    Topic: "activo"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "¿Cuál de las siguientes cuentas es un ejemplo típico de Activo?"
+    Options:
+    - Text: "Efectivo en caja"
+      IsCorrect: 1
+    - Text: "Cuentas por pagar a proveedores"
+      IsCorrect: 0
+    - Text: "Capital social"
+      IsCorrect: 0
+    - Text: "Ingresos por ventas"
+      IsCorrect: 0
+  - Id: "pasivo_ejemplo"
+    Domain: "contabilidad"
+    Topic: "pasivo"
+    Difficulty: "basic"
+    Tags: []
+    PromptText: "¿Cuál de las siguientes cuentas es un ejemplo típico de Pasivo?"
+    Options:
+    - Text: "Cuentas por pagar a proveedores"
+      IsCorrect: 1
+    - Text: "Efectivo en caja"
+      IsCorrect: 0
+    - Text: "Terreno propiedad de la entidad"
+      IsCorrect: 0
+    - Text: "Ingresos por servicios prestados"
+      IsCorrect: 0
