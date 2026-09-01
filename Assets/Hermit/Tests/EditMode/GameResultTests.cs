@@ -49,5 +49,19 @@ namespace Hermit.Tests.EditMode
             Assert.AreEqual("c5_sample", result.ContentSetId);
             Assert.AreEqual(2, result.ContentSchemaVersion);
         }
+
+        [Test]
+        public void BestStreak_DefaultsToZero_ForAGameWithNoComboConcept()
+        {
+            var result = new GameResult("g", "s", 0, 0, 0, 0f, true);
+            Assert.AreEqual(0, result.BestStreak);
+        }
+
+        [Test]
+        public void BestStreak_IsCarriedThrough_WhenProvided()
+        {
+            var result = new GameResult("g", "s", 0, 0, 0, 0f, true, bestStreak: 7);
+            Assert.AreEqual(7, result.BestStreak);
+        }
     }
 }

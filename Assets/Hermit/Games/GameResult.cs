@@ -34,6 +34,10 @@ namespace Hermit.Games
         public string ContentSetId { get; }
         public int ContentSchemaVersion { get; }
 
+        /// <summary>Best consecutive-correct streak reached — 0 for a game with
+        /// no combo concept. Added in C7 alongside Clásico's combo mechanic.</summary>
+        public int BestStreak { get; }
+
         public IReadOnlyDictionary<string, string> Metadata { get; }
 
         public GameResult(
@@ -46,6 +50,7 @@ namespace Hermit.Games
             bool completed,
             string contentSetId = "",
             int contentSchemaVersion = 0,
+            int bestStreak = 0,
             IReadOnlyDictionary<string, string> metadata = null)
         {
             GameId = gameId;
@@ -57,6 +62,7 @@ namespace Hermit.Games
             Completed = completed;
             ContentSetId = contentSetId ?? string.Empty;
             ContentSchemaVersion = contentSchemaVersion;
+            BestStreak = bestStreak;
             Metadata = metadata ?? EmptyMetadata;
 
             var total = correct + incorrect;

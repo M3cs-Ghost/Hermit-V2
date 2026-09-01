@@ -15,6 +15,11 @@ namespace Hermit.Games.Clasico
         [SerializeField] private int _maxSpeedBonusPoints = 50;
         [SerializeField] private float _feedbackDisplaySeconds = 0.9f;
 
+        [Header("C7 — round rhythm / combo")]
+        [SerializeField] private float _countdownDurationSeconds;
+        [SerializeField] private int _streakBonusThreshold = 3;
+        [SerializeField] private int _streakBonusPoints = 30;
+
         public QuestionSet QuestionSet => _questionSet;
         public int QuestionCount => _questionCount;
 
@@ -24,10 +29,22 @@ namespace Hermit.Games.Clasico
         public int MaxSpeedBonusPoints => _maxSpeedBonusPoints;
         public float FeedbackDisplaySeconds => _feedbackDisplaySeconds;
 
+        /// <summary>0 (or less) means no countdown — the session starts on the
+        /// first question immediately, same as before C7. Defaults to 0 so
+        /// every existing CreateInMemory call site (tests) keeps behaving
+        /// exactly as before unless it opts in.</summary>
+        public float CountdownDurationSeconds => _countdownDurationSeconds;
+
+        /// <summary>0 (either field) disables the streak bonus entirely.</summary>
+        public int StreakBonusThreshold => _streakBonusThreshold;
+        public int StreakBonusPoints => _streakBonusPoints;
+
         public override IGameEngine CreateEngine() => new ClasicoGameEngine();
 
         /// <summary>Builds a definition from code instead of an Inspector asset —
-        /// used by tests and by anything that needs a throwaway configuration.</summary>
+        /// used by tests and by anything that needs a throwaway configuration.
+        /// countdownDurationSeconds/streakBonus* default to "off" so pre-C7
+        /// call sites are unaffected unless they opt in.</summary>
         public static ClasicoGameDefinition CreateInMemory(
             string gameId,
             string displayName,
@@ -36,7 +53,10 @@ namespace Hermit.Games.Clasico
             float timePerQuestionSeconds,
             int pointsPerCorrectAnswer,
             int maxSpeedBonusPoints,
-            float feedbackDisplaySeconds)
+            float feedbackDisplaySeconds,
+            float countdownDurationSeconds = 0f,
+            int streakBonusThreshold = 0,
+            int streakBonusPoints = 0)
         {
             var instance = CreateInstance<ClasicoGameDefinition>();
             instance.SetIdentity(gameId, displayName);
@@ -46,6 +66,9 @@ namespace Hermit.Games.Clasico
             instance._pointsPerCorrectAnswer = pointsPerCorrectAnswer;
             instance._maxSpeedBonusPoints = maxSpeedBonusPoints;
             instance._feedbackDisplaySeconds = feedbackDisplaySeconds;
+            instance._countdownDurationSeconds = countdownDurationSeconds;
+            instance._streakBonusThreshold = streakBonusThreshold;
+            instance._streakBonusPoints = streakBonusPoints;
             return instance;
         }
     }

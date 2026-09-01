@@ -33,5 +33,23 @@ namespace Hermit.Games.Clasico
             var bonus = (int)Math.Round(remainingFraction * maxSpeedBonusPoints);
             return pointsPerCorrectAnswer + bonus;
         }
+
+        /// <summary>Flat bonus every Nth consecutive correct answer (e.g.
+        /// threshold=3 -> a bonus lands on streaks 3, 6, 9...). Deterministic,
+        /// no RNG, bounded to one bonus per question — evaluated and kept
+        /// deliberately simple after considering a growing multiplier: a
+        /// multiplier compounds without an obvious cap and reads as an
+        /// "exploit evidente" for a long streak, which the brief explicitly
+        /// asks to avoid. streakAfterThisAnswer is the streak count *after*
+        /// this correct answer (1-based); 0 or a broken streak scores 0.</summary>
+        public static int ComputeStreakBonus(int streakAfterThisAnswer, int streakBonusThreshold, int streakBonusPoints)
+        {
+            if (streakAfterThisAnswer <= 0 || streakBonusThreshold <= 0 || streakBonusPoints <= 0)
+            {
+                return 0;
+            }
+
+            return streakAfterThisAnswer % streakBonusThreshold == 0 ? streakBonusPoints : 0;
+        }
     }
 }

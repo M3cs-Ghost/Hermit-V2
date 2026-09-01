@@ -95,7 +95,39 @@ namespace Hermit.Tests.PlayMode
             BuildSelector();
             yield return null;
 
-            Assert.AreEqual(0, _root.GetComponentsInChildren<Button>(true).Length);
+            // The (hidden-by-default) Back button is the one Button that
+            // always exists regardless of game count — see BackButton tests
+            // below — so an empty registry still shows exactly that one,
+            // inactive, button.
+            Assert.AreEqual(1, _root.GetComponentsInChildren<Button>(true).Length);
+            Assert.IsFalse(FindButton("BackButton").gameObject.activeSelf);
+        }
+
+        // --- Back button (C7 — Shell integration) ---
+
+        [UnityTest]
+        public IEnumerator BackButton_IsHidden_UntilSetBackActionIsCalled()
+        {
+            BuildSelector(SecondGameDefinition.CreateInMemory("game_a", "Game A"));
+            yield return null;
+
+            Assert.IsFalse(FindButton("BackButton").gameObject.activeSelf, "GameSessionInstaller (dev/test) never calls SetBackAction — the button must stay hidden there.");
+        }
+
+        [UnityTest]
+        public IEnumerator SetBackAction_ShowsTheBackButton_AndWiresItToTheCallback()
+        {
+            var hud = BuildSelector(SecondGameDefinition.CreateInMemory("game_a", "Game A"));
+            yield return null;
+
+            var backCalled = false;
+            hud.SetBackAction(() => backCalled = true);
+
+            var backButton = FindButton("BackButton");
+            Assert.IsTrue(backButton.gameObject.activeSelf);
+
+            backButton.onClick.Invoke();
+            Assert.IsTrue(backCalled);
         }
     }
 }

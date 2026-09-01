@@ -586,10 +586,12 @@ and evidence log at the top of this section.
 - `Topic` is still a free-form string, not a formal taxonomy — acceptable
   for 10 sample questions, likely insufficient once real content scales.
 - No touch/gamepad testing was done (no such hardware in this session).
-- `01_Shell` remains an empty placeholder, now explicitly skipped by
-  `BootstrapSceneFlow`'s direct `00_Bootstrap → 02_GameplaySandbox` jump —
-  a deliberate temporary shortcut, not a final scene-flow design (see
-  "Scene strategy"). Revisit once `01_Shell` has real content.
+- ~~`01_Shell` remains an empty placeholder, now explicitly skipped by
+  `BootstrapSceneFlow`'s direct `00_Bootstrap → 02_GameplaySandbox` jump~~ —
+  **resolved in C7**: `01_Shell`/`ShellInstaller` is now the real product
+  entry point, and `BootstrapSceneFlow.DestinationSceneName` points there
+  instead. `02_GameplaySandbox` remains, unaffected, as the dev/test-only
+  scene. See `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`.
 - `BootstrapSceneFlow`'s entry-scene check is a literal string comparison
   against `"00_Bootstrap"` — correct and simple for exactly one entry
   scene, but would need to become a small explicit sequence (rather than a

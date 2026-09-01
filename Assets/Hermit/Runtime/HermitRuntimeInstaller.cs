@@ -12,6 +12,15 @@ namespace Hermit.Runtime
     /// </summary>
     internal static class HermitRuntimeInstaller
     {
+        /// <summary>The one HermitAppContext this process ever creates, once
+        /// Install() has run — null before that, or if EnvironmentConfig
+        /// failed to load. Added in C7 so Shell can show a discrete session
+        /// status line ("acceso discreto a estado del usuario si está
+        /// disponible") by reading Networking's own state instead of Shell
+        /// constructing or calling into Supabase itself — Shell still never
+        /// touches Hermit.Networking directly.</summary>
+        public static HermitAppContext Current { get; private set; }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
@@ -41,6 +50,7 @@ namespace Hermit.Runtime
             }
 
             var context = new HermitAppContext(config);
+            Current = context;
             _ = context.RestoreSessionAsync();
 
             // Debug panel only ever spawns for Development — a build carrying a

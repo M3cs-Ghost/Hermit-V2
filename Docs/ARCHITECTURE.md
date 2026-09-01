@@ -31,8 +31,8 @@ file only tracks what actually exists in this repo *today*.
 |---|---|---|---|
 | `Hermit.Core` | `Assets/Hermit/Core/` | — | Pure data/utility: logging, environment config, `HermitError`/`HermitResult<T>`. Zero dependencies, on purpose. (C2 once expected the Game Framework to live here; it ended up in `Hermit.Games` instead — see that row.) |
 | `Hermit.Networking` | `Assets/Hermit/Networking/` | Core | Auth/backend/session/connectivity contracts **and** their concrete REST implementations (`Supabase*Service`), added in C4. |
-| `Hermit.Runtime` | `Assets/Hermit/Runtime/` | Core, Networking, Games | **Composition root.** The one assembly allowed to construct concrete Networking services and games, and wire them together. Holds `HermitBootstrap`, `HermitAppContext`, the auto-installer, the C4 debug panel, and (`GameFramework/`) the game session composition root `GameSessionInstaller` — builds the registry, shows the game selector (`GameSelectorHud`), and hosts Clásico via `ClasicoGameHost`/`ClasicoHud`. See `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`. |
-| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Still empty — the C4 debug panel, the game selector, and Clásico's screen are deliberately **not** here (see below and `Docs/C5_GAME_FRAMEWORK.md`/`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`). |
+| `Hermit.Runtime` | `Assets/Hermit/Runtime/` | Core, Networking, Games | **Composition root.** The one assembly allowed to construct concrete Networking services and games, and wire them together. Holds `HermitBootstrap`, `HermitAppContext`, `BootstrapSceneFlow`, the C4 debug panel, and (`GameFramework/`) the shared game-orchestration stack: `GameHub` (registry+selector+hosts, extracted in C7), `GameSelectorHud`, `ClasicoGameHost`/`ClasicoHud`, `HermitTheme`/`RuntimeUIFactory`, and two composition roots that both build a `GameHub` — `ShellInstaller` (`01_Shell`, the real product entry point) and `GameSessionInstaller` (`02_GameplaySandbox`, dev/test only). See `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`. |
+| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Still empty — the C4 debug panel, Shell, the game selector, and Clásico's screen are deliberately **not** here (see below and `Docs/C5_GAME_FRAMEWORK.md`/`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`/`Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`). |
 | `Hermit.Games` | `Assets/Hermit/Games/` | Core | **The Game Framework + all game implementations**, added in C5, extended in C6 (`GameDefinition`/`GameSession`/`GameContext`/`GameResult`/`IGameEngine`/`GameFlowController`/`GameRegistry`/`GameCatalog`, `Content/` incl. `ContentValidator`, `Analytics/`, `Clasico/`). Never references Networking or UI. See `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`. |
 | `Hermit.Editor` | `Assets/Hermit/Editor/` | Core | Editor-only tooling. Empty today. |
 | `Hermit.Tests.EditMode` | `Assets/Hermit/Tests/EditMode/` | Core, Networking, Games | Pure-logic tests, Editor platform only. |
@@ -109,22 +109,54 @@ special-cased anywhere in *this* path. C5's manual validation built with only
 **Update from C6 — `00_Bootstrap` is now load-bearing, just not for
 Networking:** a standalone Player always starts at build index 0
 (`00_Bootstrap`), and nothing advanced past it — Editor manual testing never
-caught this because opening `02_GameplaySandbox` and pressing Play loads
-that scene directly, bypassing build order. `Hermit.Runtime.BootstrapSceneFlow`
-(a second, separate `RuntimeInitializeOnLoadMethod` hook, deliberately not
-merged into `HermitRuntimeInstaller`) now checks whether the active scene is
-`00_Bootstrap` and, if so, loads `02_GameplaySandbox` directly (`01_Shell`
-is skipped — still an empty placeholder). `00_Bootstrap.unity` itself still
-holds no content beyond a Main Camera; its role is purely "be scene 0", not
-to display anything. Full root-cause writeup, evidence, and the fix:
-`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`, "Bootstrap scene flow".
+caught this because opening a gameplay scene directly and pressing Play
+loads that scene directly, bypassing build order.
+`Hermit.Runtime.BootstrapSceneFlow` (a second, separate
+`RuntimeInitializeOnLoadMethod` hook, deliberately not merged into
+`HermitRuntimeInstaller`) checks whether the active scene is `00_Bootstrap`
+and, if so, loads its destination scene directly. `00_Bootstrap.unity`
+itself still holds no content beyond a Main Camera; its role is purely "be
+scene 0", not to display anything.
+
+**Update from C7 — the destination is `01_Shell`, not
+`02_GameplaySandbox`:** now that `01_Shell`/`ShellInstaller` is the real
+product entry point, `BootstrapSceneFlow.DestinationSceneName` (renamed
+from `GameplaySceneName`, which would have been actively misleading pointed
+at Shell) was repointed there. `02_GameplaySandbox` is unaffected — it
+remains reachable by opening it directly in the Editor, per its own
+dev/test role (see "C7 objective" below). Full root-cause writeup and the
+original fix: `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`, "Bootstrap scene
+flow"; the C7 destination change: `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`,
+"BootstrapSceneFlow".
 
 ## Folders not yet in use
 
-`Text/`, `Art/`, `Audio/` exist but are still empty/unused. `Runtime/` is
-resolved (see the Assemblies table). `Content/` and `Data/` are both now in
-use — see Environments above and `Docs/C5_GAME_FRAMEWORK.md` ("Content
-separation") for `Content/Resources/C5SampleQuestions.asset`.
+`Text/`, `Art/` exist but are still empty/unused. `Audio/` remains unused —
+C7 deliberately shipped without audio. `Runtime/` is resolved (see the
+Assemblies table). `Content/` and `Data/` are both in use — see Environments
+above and `Docs/C5_GAME_FRAMEWORK.md` ("Content separation") for
+`Content/Resources/C5SampleQuestions.asset`; `Data/Resources/` also now
+holds `HermitTheme.asset` (C7).
+
+## C7 objective
+
+Shell real + Clásico gameplay redesign v1 + visual language prototype —
+**COMPLETE**, every manual gate PASS including a standalone Windows
+Development Build.
+`01_Shell` (`ShellInstaller`) becomes the actual product entry point,
+wrapping the same `GameHub`/`GameSelectorHud`/`ClasicoGameHost` stack
+`02_GameplaySandbox` uses (extracted into `GameHub` this phase specifically
+to avoid duplicating that composition logic) behind a Home screen. Clásico
+gained a countdown, a visible timer, a streak/combo bonus, and
+punch/shake/fade feedback — all inside `ClasicoGameEngine`/`ClasicoGameHost`,
+with zero new `GameFlowController` states. A first reusable visual language
+(`HermitTheme` + a `RuntimeUIFactory` refactor) replaced C5/C6's
+per-file-hardcoded colors. A real bug found during manual validation
+(incorrect answers flinging the question card off-screen via an
+accumulating `ShakeRoutine` offset, caused by `RenderReveal` re-triggering
+the animation every frame) was root-caused, fixed, and covered by a
+dedicated PlayMode regression test. Full design, decision log, bug writeup,
+and manual validation log: see `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`.
 
 ## C6 objective
 

@@ -27,6 +27,12 @@ namespace Hermit.Games
         public int Correct { get; set; }
         public int Incorrect { get; set; }
 
+        /// <summary>Current/best consecutive-correct streak — added in C7 for
+        /// Clásico's combo mechanic. Generic enough to leave at 0 for a game
+        /// with no such concept, same reasoning as Score/Round/Correct/Incorrect.</summary>
+        public int Streak { get; set; }
+        public int BestStreak { get; set; }
+
         public GameSession(string gameId)
         {
             GameId = gameId;

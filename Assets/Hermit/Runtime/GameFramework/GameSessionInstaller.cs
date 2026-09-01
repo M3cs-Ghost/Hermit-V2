@@ -1,44 +1,33 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 using Hermit.Core;
 using Hermit.Games;
-using Hermit.Games.Analytics;
 
 namespace Hermit.Runtime.GameFramework
 {
     /// <summary>
-    /// Composition root for the game framework's runtime surface. Lives on one
-    /// GameObject in 02_GameplaySandbox (no serialized references — everything
-    /// is built or loaded in code, the same zero-scene-wiring approach
-    /// HermitRuntimeInstaller uses for Networking).
+    /// Dev/test composition root — lives on one GameObject in
+    /// 02_GameplaySandbox, kept per the C7 brief specifically for
+    /// development, PlayMode tests, and debugging, now that
+    /// 01_Shell/ShellInstaller is the real product entry point (see
+    /// Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md, "Scene strategy").
     ///
-    /// C6 replaces C5's ClasicoVerticalSliceInstaller (which loaded exactly
-    /// one game by a fixed Resources path and wired itself directly to
-    /// Clasico) with a generic root: build a registry from one catalog asset,
-    /// show a selector, launch whichever game was picked, route lifecycle
-    /// generically, return to the selector on Idle. The only Clasico-specific
-    /// line is the one dictionary registration below — see
-    /// Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md, "Runtime flow".
-    ///
-    /// Deliberately separate from HermitRuntimeInstaller: that installer is
-    /// global (RuntimeInitializeOnLoadMethod, every scene) and owns Networking;
-    /// this one is scene-scoped and owns nothing beyond the game framework.
-    /// Neither knows the other exists.
+    /// C7 extracted the actual registry/selector/host wiring into
+    /// <see cref="GameHub"/> so this class and ShellInstaller share one
+    /// implementation instead of two copies of the same composition logic —
+    /// this installer now differs from ShellInstaller only in *not* wrapping
+    /// the hub behind a product Home screen, and in never wiring the
+    /// selector's optional "Volver" button (there is no Shell to return to
+    /// from this scene).
     /// </summary>
     public sealed class GameSessionInstaller : MonoBehaviour
     {
-        private GameRegistry _registry;
-        private GameFlowController _flowController;
-        private GameSelectorHud _selectorHud;
-        private readonly Dictionary<string, IGamePresenterHost> _hostsByGameId = new Dictionary<string, IGamePresenterHost>();
-        private IGamePresenterHost _activeHost;
+        private GameHub _hub;
 
         /// <summary>Public so PlayMode tests can drive the composed framework
         /// directly instead of simulating pointer clicks through the Input
         /// System — see Docs/C5_GAME_FRAMEWORK.md, "Manual validation" for why
         /// real clicks are a human-only gate.</summary>
-        public GameFlowController FlowController => _flowController;
+        public GameFlowController FlowController => _hub?.FlowController;
 
         private void Awake()
         {
@@ -53,7 +42,7 @@ namespace Hermit.Runtime.GameFramework
                 return;
             }
 
-            _registry = new GameRegistry();
+            var registry = new GameRegistry();
             foreach (var definition in catalog.Games)
             {
                 if (definition == null)
@@ -62,64 +51,25 @@ namespace Hermit.Runtime.GameFramework
                     continue;
                 }
 
-                _registry.Register(definition);
+                registry.Register(definition);
             }
 
-            _flowController = new GameFlowController();
-            _flowController.StateChanged += OnFlowStateChanged;
+            var selectorHud = gameObject.AddComponent<GameSelectorHud>();
+            selectorHud.Build(canvas.transform, registry.All);
 
             var clasicoHud = gameObject.AddComponent<ClasicoHud>();
             clasicoHud.Build(canvas.transform);
-            clasicoHud.ExitToIdleRequested += () => _flowController.AcknowledgeResults();
-            _hostsByGameId["clasico"] = new ClasicoGameHost(clasicoHud);
 
-            _selectorHud = gameObject.AddComponent<GameSelectorHud>();
-            _selectorHud.Build(canvas.transform, _registry.All);
-            _selectorHud.GameLaunchRequested += OnGameLaunchRequested;
+            _hub = new GameHub(registry, selectorHud);
+            clasicoHud.ExitToIdleRequested += () => _hub.FlowController.AcknowledgeResults();
+            _hub.RegisterPresenter("clasico", new ClasicoGameHost(clasicoHud));
 
-            _selectorHud.Show();
+            _hub.ShowSelector();
         }
 
         private void Update()
         {
-            if (_flowController == null || _flowController.State != GameLifecycleState.Playing)
-            {
-                return;
-            }
-
-            _flowController.Tick(Time.deltaTime);
-
-            if (_flowController.State == GameLifecycleState.Playing)
-            {
-                _activeHost?.RenderFrame();
-            }
-        }
-
-        private void OnGameLaunchRequested(GameDefinition definition)
-        {
-            if (!_hostsByGameId.TryGetValue(definition.GameId, out var host))
-            {
-                HermitLog.Error($"No presenter host registered for game '{definition.GameId}' — cannot launch it.");
-                return;
-            }
-
-            _selectorHud.Hide();
-            _activeHost = host;
-
-            var context = new GameContext(new HermitLogAnalyticsSink(), new System.Random());
-            _activeHost.Show(_flowController, definition, context);
-        }
-
-        private void OnFlowStateChanged(GameLifecycleState state)
-        {
-            if (state != GameLifecycleState.Idle)
-            {
-                return;
-            }
-
-            _activeHost?.Hide();
-            _activeHost = null;
-            _selectorHud.Show();
+            _hub?.Tick(Time.deltaTime);
         }
     }
 }

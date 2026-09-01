@@ -29,13 +29,17 @@ namespace Hermit.Tests.EditMode
             QuestionDefinition[] questions,
             int questionCount = -1,
             float timePerQuestion = 0f,
-            float feedbackSeconds = 1f)
+            float feedbackSeconds = 1f,
+            float countdownSeconds = 0f,
+            int streakBonusThreshold = 0,
+            int streakBonusPoints = 0)
         {
             var set = QuestionSet.CreateInMemory("set", "desc", questions);
             var definition = ClasicoGameDefinition.CreateInMemory(
                 "clasico_test", "Clasico Test", set,
                 questionCount < 0 ? questions.Length : questionCount,
-                timePerQuestion, pointsPerCorrectAnswer: 100, maxSpeedBonusPoints: 0, feedbackDisplaySeconds: feedbackSeconds);
+                timePerQuestion, pointsPerCorrectAnswer: 100, maxSpeedBonusPoints: 0, feedbackDisplaySeconds: feedbackSeconds,
+                countdownDurationSeconds: countdownSeconds, streakBonusThreshold: streakBonusThreshold, streakBonusPoints: streakBonusPoints);
 
             var context = new GameContext(NullGameAnalyticsSink.Instance, new System.Random(0));
             var session = new GameSession(definition.GameId);
@@ -186,6 +190,150 @@ namespace Hermit.Tests.EditMode
             LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(".*ContentValidation.*bad_q.*"));
 
             Assert.DoesNotThrow(() => BeginEngine(new[] { badQuestion }));
+        }
+
+        // --- Countdown (C7) ---
+
+        [Test]
+        public void Begin_WithNoCountdownConfigured_SkipsStraightToFirstQuestion()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, countdownSeconds: 0f);
+
+            Assert.IsFalse(engine.IsCountingDown);
+            Assert.IsNotNull(engine.CurrentView);
+        }
+
+        [Test]
+        public void Begin_WithCountdownConfigured_StartsCountingDown_WithNoQuestionYet()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, countdownSeconds: 3f);
+
+            Assert.IsTrue(engine.IsCountingDown);
+            Assert.IsNull(engine.CurrentView);
+            Assert.AreEqual(3, engine.CountdownSecondsRemaining);
+        }
+
+        [Test]
+        public void Tick_DuringCountdown_CountsDownWholeSeconds()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, countdownSeconds: 3f);
+
+            engine.Tick(1.1f);
+            Assert.IsTrue(engine.IsCountingDown);
+            Assert.AreEqual(2, engine.CountdownSecondsRemaining);
+        }
+
+        [Test]
+        public void Tick_PastCountdownDuration_AdvancesToFirstQuestion()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, countdownSeconds: 3f);
+
+            engine.Tick(3.1f);
+
+            Assert.IsFalse(engine.IsCountingDown);
+            Assert.IsNotNull(engine.CurrentView);
+            Assert.AreEqual("q0", engine.CurrentView.QuestionId);
+        }
+
+        [Test]
+        public void SubmitAnswer_DuringCountdown_IsIgnored()
+        {
+            var (engine, session) = BeginEngine(new[] { SingleOption("q0", true) }, countdownSeconds: 3f);
+
+            engine.SubmitAnswer(0);
+
+            Assert.AreEqual(0, session.Score);
+            Assert.AreEqual(0, session.Correct + session.Incorrect);
+            Assert.IsTrue(engine.IsCountingDown);
+        }
+
+        // --- Timer fraction (C7) ---
+
+        [Test]
+        public void QuestionTimeFraction01_IsOne_AtTheStartOfTheDecisionWindow()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, timePerQuestion: 8f);
+            Assert.AreEqual(1f, engine.QuestionTimeFraction01, 0.001f);
+        }
+
+        [Test]
+        public void QuestionTimeFraction01_DecaysLinearlyToZero()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, timePerQuestion: 8f);
+
+            engine.Tick(4f);
+            Assert.AreEqual(0.5f, engine.QuestionTimeFraction01, 0.01f);
+        }
+
+        [Test]
+        public void QuestionTimeFraction01_IsAlwaysOne_WhenUntimed()
+        {
+            var (engine, _) = BeginEngine(new[] { SingleOption("q0", true) }, timePerQuestion: 0f);
+
+            engine.Tick(100f);
+            Assert.AreEqual(1f, engine.QuestionTimeFraction01, 0.001f);
+        }
+
+        // --- Streak (C7) ---
+
+        [Test]
+        public void ConsecutiveCorrectAnswers_IncreaseStreak_AndAwardBonusAtThreshold()
+        {
+            var questions = new[] { SingleOption("q0", true), SingleOption("q1", true), SingleOption("q2", true) };
+            var (engine, session) = BeginEngine(questions, feedbackSeconds: 0.1f, streakBonusThreshold: 3, streakBonusPoints: 30);
+
+            engine.SubmitAnswer(0);
+            Assert.AreEqual(1, session.Streak);
+            Assert.AreEqual(100, session.Score);
+
+            engine.Tick(0.2f); // past reveal -> next question
+            engine.SubmitAnswer(0);
+            Assert.AreEqual(2, session.Streak);
+            Assert.AreEqual(200, session.Score);
+
+            engine.Tick(0.2f);
+            engine.SubmitAnswer(0);
+            Assert.AreEqual(3, session.Streak);
+            Assert.AreEqual(330, session.Score, "Third consecutive correct answer should add the 30-point streak bonus.");
+            Assert.AreEqual(3, session.BestStreak);
+        }
+
+        [Test]
+        public void IncorrectAnswer_ResetsStreakToZero()
+        {
+            // Draw order is RNG-dependent (covered separately by
+            // QuestionSetContentProviderTests) — read which question is
+            // actually showing at each step rather than assuming "correct_q"
+            // is drawn first; both option-1 and only-option questions keep
+            // shuffling a no-op (see SingleOption's comment above), so this
+            // is purely about not assuming *question* order.
+            var questions = new[] { SingleOption("correct_q", true), SingleOption("incorrect_q", false) };
+            var (engine, session) = BeginEngine(questions, feedbackSeconds: 0.1f, streakBonusThreshold: 3, streakBonusPoints: 30);
+
+            var firstIsCorrect = engine.CurrentView.QuestionId == "correct_q";
+            engine.SubmitAnswer(0);
+            var streakAfterFirst = firstIsCorrect ? 1 : 0;
+            Assert.AreEqual(streakAfterFirst, session.Streak);
+
+            engine.Tick(0.2f);
+            var secondIsCorrect = engine.CurrentView.QuestionId == "correct_q";
+            engine.SubmitAnswer(0);
+            var streakAfterSecond = secondIsCorrect ? streakAfterFirst + 1 : 0;
+            Assert.AreEqual(streakAfterSecond, session.Streak, "An incorrect answer must reset the streak to 0 at the moment it happens.");
+
+            Assert.AreEqual(1, session.BestStreak, "Exactly one answer in this sequence is correct, so the streak must have reached 1 at some point.");
+        }
+
+        [Test]
+        public void BuildResult_IncludesBestStreak()
+        {
+            var (engine, session) = BeginEngine(new[] { SingleOption("q0", true) }, streakBonusThreshold: 3, streakBonusPoints: 30);
+            engine.SubmitAnswer(0);
+
+            var result = engine.BuildResult(completed: true);
+
+            Assert.AreEqual(session.BestStreak, result.BestStreak);
+            Assert.AreEqual(1, result.BestStreak);
         }
     }
 }

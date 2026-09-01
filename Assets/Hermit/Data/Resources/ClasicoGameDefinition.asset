@@ -23,3 +23,6 @@ MonoBehaviour:
   _pointsPerCorrectAnswer: 100
   _maxSpeedBonusPoints: 50
   _feedbackDisplaySeconds: 0.9
+  _countdownDurationSeconds: 3
+  _streakBonusThreshold: 3
+  _streakBonusPoints: 30
