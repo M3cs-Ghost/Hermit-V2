@@ -28,7 +28,7 @@ namespace Hermit.Runtime.GameFramework
     /// involvement at all (a stronger isolation than testing it only through
     /// the real catalog).
     /// </summary>
-    public sealed class GameSelectorHud : MonoBehaviour
+    public sealed class GameSelectorHud : MonoBehaviour, IGameSelectorScreen
     {
         public event Action<GameDefinition> GameLaunchRequested;
 

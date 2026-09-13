@@ -9,24 +9,32 @@ namespace Hermit.Runtime.GameFramework
 {
     /// <summary>
     /// Everything C6's GameSessionInstaller used to do inline — own a
-    /// GameRegistry-backed GameFlowController, a GameSelectorHud, and the
-    /// GameId-keyed presenter hosts — extracted into a plain, reusable class
-    /// so C7's ShellInstaller (the product entry point) and the C5/C6-era
-    /// GameSessionInstaller (kept for 02_GameplaySandbox dev/test) share one
-    /// implementation instead of two copies of the same composition logic.
-    /// Not a MonoBehaviour — whichever installer owns one drives its Tick()
-    /// from its own Update().
+    /// GameRegistry-backed GameFlowController, a game-selector screen, and
+    /// the GameId-keyed presenter hosts — extracted into a plain, reusable
+    /// class so C7's ShellInstaller (the product entry point) and the
+    /// C5/C6-era GameSessionInstaller (kept for 02_GameplaySandbox dev/test)
+    /// share one implementation instead of two copies of the same
+    /// composition logic. Not a MonoBehaviour — whichever installer owns
+    /// one drives its Tick() from its own Update().
+    ///
+    /// C9.2: depends on <see cref="IGameSelectorScreen"/> rather than the
+    /// concrete <see cref="GameSelectorHud"/>, so ShellInstaller can pass
+    /// the new <see cref="ArcadeGalleryHud"/> (the product's own premium
+    /// Arcade presentation) while GameSessionInstaller keeps passing the
+    /// original plain <see cref="GameSelectorHud"/> unchanged — one launch/
+    /// back orchestration, two interchangeable presentations, never two
+    /// copies of the launch logic itself.
     /// </summary>
     internal sealed class GameHub
     {
         private readonly GameRegistry _registry;
-        private readonly GameSelectorHud _selectorHud;
+        private readonly IGameSelectorScreen _selectorHud;
         private readonly Dictionary<string, IGamePresenterHost> _hostsByGameId = new Dictionary<string, IGamePresenterHost>();
         private IGamePresenterHost _activeHost;
 
         public GameFlowController FlowController { get; }
 
-        public GameHub(GameRegistry registry, GameSelectorHud selectorHud)
+        public GameHub(GameRegistry registry, IGameSelectorScreen selectorHud)
         {
             _registry = registry;
             _selectorHud = selectorHud;

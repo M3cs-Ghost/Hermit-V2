@@ -33,6 +33,14 @@ namespace Hermit.Runtime.GameFramework
         [SerializeField] private Color _accent = new Color(0.4863f, 0.3608f, 1.0f, 1f);    // #7C5CFF
         [SerializeField] private Color _accentDim = new Color(0.2941f, 0.2275f, 0.6f, 1f); // #4B3A99
 
+        // C9.1a: a warm ivory/pale-gold token for text presented directly
+        // over illustrated world art (the Hub's destination markers) — the
+        // cool violet _accent/_textPrimary tokens read as "UI chrome" against
+        // warm architectural illustration; this one reads as "environmental
+        // signage" instead. See Docs/C9_1_START_SCREEN_HUB_IMPLEMENTATION.md,
+        // "C9.1a".
+        [SerializeField] private Color _accentWarm = new Color(0.9569f, 0.8824f, 0.7255f, 1f); // #F4E1B9
+
         [Header("Text")]
         [SerializeField] private Color _textPrimary = new Color(0.9608f, 0.9647f, 0.9804f, 1f);   // #F5F6FA
         [SerializeField] private Color _textSecondary = new Color(0.6510f, 0.6745f, 0.7529f, 1f); // #A6ACC0
@@ -65,6 +73,7 @@ namespace Hermit.Runtime.GameFramework
         public Color PanelRaised => _panelRaised;
         public Color Accent => _accent;
         public Color AccentDim => _accentDim;
+        public Color AccentWarm => _accentWarm;
         public Color TextPrimary => _textPrimary;
         public Color TextSecondary => _textSecondary;
         public Color Correct => _correct;

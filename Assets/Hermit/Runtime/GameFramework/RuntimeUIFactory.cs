@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -29,6 +31,8 @@ namespace Hermit.Runtime.GameFramework
         private static Font _builtinFont;
         private static HermitTheme _theme;
         private static readonly Dictionary<int, Sprite> RoundedSpriteCache = new Dictionary<int, Sprite>();
+        private static readonly Dictionary<string, Sprite> ArtCache = new Dictionary<string, Sprite>();
+        private static readonly Dictionary<string, AudioClip> AudioCache = new Dictionary<string, AudioClip>();
 
         private static Font BuiltinFont => _builtinFont != null
             ? _builtinFont
@@ -102,9 +106,20 @@ namespace Hermit.Runtime.GameFramework
         /// that should read as "game", not as a flat debug rectangle.</summary>
         public static RectTransform CreateRoundedPanel(Transform parent, string name, Color background)
         {
+            return CreateRoundedPanel(parent, name, background, Mathf.RoundToInt(Theme.CornerRadius));
+        }
+
+        /// <summary>Same as <see cref="CreateRoundedPanel(Transform,string,Color)"/>
+        /// but with an explicit corner radius instead of the theme default —
+        /// added in C8.1 so the four Gold microgame presenters can build
+        /// circular "character" dressing (heads, badges, spotlights) by
+        /// passing a radius equal to half the shape's size, without each
+        /// presenter hand-rolling its own rounded-rect sprite generation.</summary>
+        public static RectTransform CreateRoundedPanel(Transform parent, string name, Color background, int cornerRadius)
+        {
             var rect = CreatePanel(parent, name, background);
             var image = rect.GetComponent<Image>();
-            image.sprite = GetRoundedSprite(Mathf.RoundToInt(Theme.CornerRadius));
+            image.sprite = GetRoundedSprite(cornerRadius);
             image.type = Image.Type.Sliced;
             return rect;
         }
@@ -139,6 +154,101 @@ namespace Hermit.Runtime.GameFramework
             text.verticalOverflow = VerticalWrapMode.Overflow;
 
             return text;
+        }
+
+        /// <summary>Loaded once, cached for the process lifetime — the
+        /// premium display serif (Marcellus, OFL-licensed; see
+        /// Assets/Hermit/Content/Fonts/Marcellus/SOURCE.md) C9.1b introduced
+        /// for text presented directly over illustrated world art, replacing
+        /// C9.1a's synthetic-bold LiberationSans SDF (found, on manual
+        /// validation, to still read as generic/insufficient no matter how
+        /// much size/shadow/tracking was piled onto it — the font identity
+        /// itself was the problem). Missing asset degrades to TMP's own
+        /// default font (never a crash), same warn-once contract as
+        /// <see cref="Theme"/>.</summary>
+        private static TMP_FontAsset _displayFont;
+        private static bool _displayFontMissingWarned;
+
+        private static TMP_FontAsset DisplayFont
+        {
+            get
+            {
+                if (_displayFont != null)
+                {
+                    return _displayFont;
+                }
+
+                _displayFont = Resources.Load<TMP_FontAsset>("Fonts/Marcellus-Regular SDF");
+                if (_displayFont == null && !_displayFontMissingWarned)
+                {
+                    HermitLog.Warning("Marcellus TMP font asset not found at Resources/Fonts/Marcellus-Regular SDF — environmental labels fall back to TMP's default font.");
+                    _displayFontMissingWarned = true;
+                }
+
+                return _displayFont;
+            }
+        }
+
+        /// <summary>C9.1a/C9.1b: TextMeshPro text styled for an environmental
+        /// destination marker (or the Start Screen's PRESS START prompt)
+        /// sitting directly over illustrated world art — Marcellus
+        /// (<see cref="DisplayFont"/>), its own real Regular weight (never
+        /// synthetic bold — C9.1b's brief was explicit: don't fake a weight
+        /// when a real one exists), moderate tracking, and a minimal dark
+        /// drop shadow for readability across the art's varying background
+        /// luminance, never a thick outline or logo-like extrusion. Not a
+        /// general-purpose TMP wrapper: every other screen in this project
+        /// still uses the plain <see cref="Text"/> from <see cref="CreateText"/>
+        /// — this exists specifically for text that has to compete with a
+        /// busy illustrated background, which nothing before the Hub
+        /// needed. See Docs/C9_1_START_SCREEN_HUB_IMPLEMENTATION.md,
+        /// "C9.1b".</summary>
+        public static TMP_Text CreateWorldLabel(
+            Transform parent,
+            string name,
+            string content,
+            float fontSize,
+            Color color,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 anchoredPosition,
+            Vector2 sizeDelta,
+            FontStyles fontStyle = FontStyles.Normal,
+            float characterSpacing = 4f)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = sizeDelta;
+
+            var label = go.GetComponent<TextMeshProUGUI>();
+            label.text = content;
+            label.fontSize = fontSize;
+            label.color = color;
+            label.fontStyle = fontStyle;
+            label.characterSpacing = characterSpacing;
+            label.alignment = TextAlignmentOptions.Center;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.raycastTarget = false;
+            if (DisplayFont != null)
+            {
+                label.font = DisplayFont;
+            }
+
+            // A small, restrained drop shadow — readability against a
+            // photographic/illustrated background, never a logo-style
+            // extrusion. Shadow (UnityEngine.UI) works on any Graphic,
+            // TextMeshProUGUI included, by duplicating its mesh — no custom
+            // TMP material/outline-shader property tuning needed.
+            var shadow = go.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.55f);
+            shadow.effectDistance = new Vector2(1f, -1.5f);
+            shadow.useGraphicAlpha = true;
+
+            return label;
         }
 
         public static Button CreateButton(
@@ -229,6 +339,124 @@ namespace Hermit.Runtime.GameFramework
             return fillImage;
         }
 
+        /// <summary>C8.1d: loads an illustrated Gold-world art asset from a
+        /// Resources/Art/Gold/... path, cached for the process lifetime.
+        /// Returns null (and logs one warning per distinct missing path,
+        /// never per-call) when the asset hasn't shipped yet — every caller
+        /// must treat null as "fall back to the existing procedural
+        /// presentation", never as an error, since the C8.1c Art Bible's
+        /// candidate art lands one world/character at a time (see
+        /// Docs/C8_1D_GOLD_ART_INTEGRATION.md, "Missing assets").</summary>
+        public static Sprite LoadArt(string resourcePath)
+        {
+            if (ArtCache.TryGetValue(resourcePath, out var cached))
+            {
+                return cached;
+            }
+
+            var sprite = Resources.Load<Sprite>(resourcePath);
+            if (sprite == null)
+            {
+                HermitLog.Warning($"Gold art asset not found at Resources/{resourcePath} — presenter falls back to procedural art.");
+            }
+
+            ArtCache[resourcePath] = sprite;
+            return sprite;
+        }
+
+        /// <summary>C8.1d.6: same "load once, cache, warn-and-degrade rather
+        /// than crash" contract as <see cref="LoadArt"/>, for a real
+        /// (non-procedural) audio asset under Resources/Audio/Gold/... — used
+        /// for the Western duel music candidate. A missing clip must degrade
+        /// to "no music" (the cinematic's own sound design/gunshot cues are
+        /// unaffected), never an exception.</summary>
+        public static AudioClip LoadAudio(string resourcePath)
+        {
+            if (AudioCache.TryGetValue(resourcePath, out var cached))
+            {
+                return cached;
+            }
+
+            var clip = Resources.Load<AudioClip>(resourcePath);
+            if (clip == null)
+            {
+                HermitLog.Warning($"Gold audio asset not found at Resources/{resourcePath} — presenter falls back to no music.");
+            }
+
+            AudioCache[resourcePath] = clip;
+            return clip;
+        }
+
+        /// <summary>A full-bleed, non-interactive illustrated background —
+        /// stretched to fill its parent exactly like <see cref="CreatePanel"/>,
+        /// so it can drop straight into a presenter's existing "Sky"/"Ground"
+        /// slot. Every Gold-world background candidate ships at (or very near)
+        /// the stage's own 16:9 aspect, so a plain stretch — not
+        /// letterboxing — is imperceptible; see Docs/C8_1D_GOLD_ART_INTEGRATION.md,
+        /// "Sprite import rules".</summary>
+        public static Image CreateBackgroundImage(Transform parent, string name, Sprite sprite)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(parent, false);
+            StretchFull(rect);
+
+            var image = go.GetComponent<Image>();
+            image.sprite = sprite;
+            image.type = Image.Type.Simple;
+            image.preserveAspect = false;
+            image.raycastTarget = false;
+
+            return image;
+        }
+
+        /// <summary>C8.1d: the standard presentation for every recurring-cast
+        /// illustrated portrait (Sheriff, Auditor, Presentador). These source
+        /// images are full-body character art on their own opaque studio
+        /// gradient backdrop, not alpha-cut cutouts — see
+        /// Docs/C8_1D_GOLD_ART_INTEGRATION.md, "Sprite import rules", for why
+        /// silently faking transparency was rejected. A bordered rounded-rect
+        /// frame (matching the existing panel/card language, section P of the
+        /// C8.1c Art Bible) presents the portrait honestly as a character
+        /// card inset — separate from world/environment art per the layering
+        /// rule in section 12 of the C8.1d brief — rather than pretending the
+        /// art is a world-embedded cutout. Returns the frame (for reactions —
+        /// punch/shake the whole card) and the inner portrait Image (for
+        /// sprite-swap reactions where an expression set exists).</summary>
+        public static (RectTransform frame, Image portrait) CreatePortraitFrame(
+            Transform parent,
+            string name,
+            Sprite sprite,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 anchoredPosition,
+            Vector2 sizeDelta,
+            Color frameColor)
+        {
+            var frame = CreateRoundedPanel(parent, name, frameColor, 16);
+            frame.anchorMin = anchorMin;
+            frame.anchorMax = anchorMax;
+            frame.anchoredPosition = anchoredPosition;
+            frame.sizeDelta = sizeDelta;
+
+            const float inset = 6f;
+            var portraitGo = new GameObject("Portrait", typeof(RectTransform), typeof(Image));
+            var portraitRect = (RectTransform)portraitGo.transform;
+            portraitRect.SetParent(frame, false);
+            portraitRect.anchorMin = Vector2.zero;
+            portraitRect.anchorMax = Vector2.one;
+            portraitRect.offsetMin = new Vector2(inset, inset);
+            portraitRect.offsetMax = new Vector2(-inset, -inset);
+
+            var portrait = portraitGo.GetComponent<Image>();
+            portrait.sprite = sprite;
+            portrait.type = Image.Type.Simple;
+            portrait.preserveAspect = true;
+            portrait.raycastTarget = false;
+
+            return (frame, portrait);
+        }
+
         private static Color AdjustBrightness(Color color, float delta)
         {
             return new Color(
@@ -236,6 +464,26 @@ namespace Hermit.Runtime.GameFramework
                 Mathf.Clamp01(color.g + delta),
                 Mathf.Clamp01(color.b + delta),
                 color.a);
+        }
+
+        /// <summary>C9.2: a plain alpha-only fade for any <see cref="CanvasGroup"/>
+        /// — the shared shape both StartScreenHud's Hub-nav fade and
+        /// ArcadeGalleryHud's reveal fade use for the short (~0.2-0.35s)
+        /// Hub&lt;-&gt;Arcade transition. A static factory returning an
+        /// <see cref="IEnumerator"/> works from any MonoBehaviour's
+        /// <c>StartCoroutine</c> regardless of which class actually calls
+        /// it — no MonoBehaviour dependency of its own.</summary>
+        public static IEnumerator FadeCanvasGroup(CanvasGroup group, float duration, float fromAlpha, float toAlpha)
+        {
+            var elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                group.alpha = Mathf.Lerp(fromAlpha, toAlpha, Mathf.Clamp01(elapsed / duration));
+                yield return null;
+            }
+
+            group.alpha = toAlpha;
         }
 
         public static void StretchFull(RectTransform rect)
@@ -337,6 +585,51 @@ namespace Hermit.Runtime.GameFramework
 
             RoundedSpriteCache[radius] = sprite;
             return sprite;
+        }
+
+        private static Sprite _vignetteSprite;
+
+        /// <summary>C9.2: a soft radial vignette (transparent center, opaque
+        /// edges) — generated once and cached, same "no asset hunt, no
+        /// external texture" spirit as <see cref="GetRoundedSprite"/>. Used
+        /// as ArcadeGalleryHud's restrained dark ambience: tinted with
+        /// Theme.Background at the call site rather than baked in here, so
+        /// the one generated texture works for any tint a future screen
+        /// might need.</summary>
+        public static Sprite GetVignetteSprite()
+        {
+            if (_vignetteSprite != null)
+            {
+                return _vignetteSprite;
+            }
+
+            const int size = 256;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "HermitVignette"
+            };
+
+            var center = size / 2f;
+            var maxDist = center * 1.05f;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var dx = x + 0.5f - center;
+                    var dy = y + 0.5f - center;
+                    var dist = Mathf.Sqrt(dx * dx + dy * dy) / maxDist;
+                    var alpha = Mathf.Clamp01(Mathf.SmoothStep(0f, 1f, dist));
+                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+
+            texture.Apply();
+
+            _vignetteSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            _vignetteSprite.name = texture.name;
+            return _vignetteSprite;
         }
     }
 }

@@ -31,9 +31,9 @@ file only tracks what actually exists in this repo *today*.
 |---|---|---|---|
 | `Hermit.Core` | `Assets/Hermit/Core/` | — | Pure data/utility: logging, environment config, `HermitError`/`HermitResult<T>`. Zero dependencies, on purpose. (C2 once expected the Game Framework to live here; it ended up in `Hermit.Games` instead — see that row.) |
 | `Hermit.Networking` | `Assets/Hermit/Networking/` | Core | Auth/backend/session/connectivity contracts **and** their concrete REST implementations (`Supabase*Service`), added in C4. |
-| `Hermit.Runtime` | `Assets/Hermit/Runtime/` | Core, Networking, Games | **Composition root.** The one assembly allowed to construct concrete Networking services and games, and wire them together. Holds `HermitBootstrap`, `HermitAppContext`, `BootstrapSceneFlow`, the C4 debug panel, and (`GameFramework/`) the shared game-orchestration stack: `GameHub` (registry+selector+hosts, extracted in C7), `GameSelectorHud`, `ClasicoGameHost`/`ClasicoHud`, `HermitTheme`/`RuntimeUIFactory`, and two composition roots that both build a `GameHub` — `ShellInstaller` (`01_Shell`, the real product entry point) and `GameSessionInstaller` (`02_GameplaySandbox`, dev/test only). See `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`. |
-| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Still empty — the C4 debug panel, Shell, the game selector, and Clásico's screen are deliberately **not** here (see below and `Docs/C5_GAME_FRAMEWORK.md`/`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`/`Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`). |
-| `Hermit.Games` | `Assets/Hermit/Games/` | Core | **The Game Framework + all game implementations**, added in C5, extended in C6 (`GameDefinition`/`GameSession`/`GameContext`/`GameResult`/`IGameEngine`/`GameFlowController`/`GameRegistry`/`GameCatalog`, `Content/` incl. `ContentValidator`, `Analytics/`, `Clasico/`). Never references Networking or UI. See `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`. |
+| `Hermit.Runtime` | `Assets/Hermit/Runtime/` | Core, Networking, Games | **Composition root.** The one assembly allowed to construct concrete Networking services and games, and wire them together. Holds `HermitBootstrap`, `HermitAppContext`, `BootstrapSceneFlow`, the C4 debug panel, and (`GameFramework/`) the shared game-orchestration stack: `GameHub` (registry+selector+hosts, extracted in C7), `GameSelectorHud`, `ClasicoGameHost`/`ClasicoHud` (C8.1: outer "Hermit chrome" only — score/streak/timer/command/feedback/results/transitions, no game-specific visuals), `HermitTheme`/`RuntimeUIFactory`, `GameFramework/Microgames/` (C8.1: the four Gold microgame presenters — `WesternShootoutPresenter`/`GameShowPresenter`/`BalanceMachinePresenter`/`DetectiveLineupPresenter` — plus `IMicrogamePresenter`/`MicrogameVocabulary`; C8.1b added three presentation/runtime helpers the four presenters share, none of them generic engine systems: `CharacterPrimitives` (procedural two-eye/one-mouth face kit, built once per character, posed via `Idle`/`Correct`/`Incorrect` property writes on cached references), `LocalMotionFx` (the reusable local reaction-motion toolkit — `Punch`/`Shake`/`FlashColor`/`FadeAlpha` — every call scoped to one element inside one presenter, following a strict "no-op if already playing, always restore on completion" contract), and `GameFramework/ProceduralAudio.cs` (runtime-generated `AudioClip`s — tone/sweep/noise — that `ClasicoHud` builds once and plays through its own `AudioSource`, not owned by any single presenter). See `Docs/C8_1B_GOLD_VISUAL_POLISH.md`), and two composition roots that both build a `GameHub` — `ShellInstaller` (`01_Shell`, the real product entry point) and `GameSessionInstaller` (`02_GameplaySandbox`, dev/test only, unchanged by C8.1). See `Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md` and `Docs/C8_1_GOLD_MICROGAME_SLICE.md`. |
+| `Hermit.UI` | `Assets/Hermit/UI/` | Core | Reserved. Still empty — the C4 debug panel, Shell, the game selector, and Clásico's screens are deliberately **not** here (see below and `Docs/C5_GAME_FRAMEWORK.md`/`Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md`/`Docs/C7_SHELL_CLASICO_VISUAL_LANGUAGE.md`/`Docs/C8_1_GOLD_MICROGAME_SLICE.md`). |
+| `Hermit.Games` | `Assets/Hermit/Games/` | Core | **The Game Framework + all game implementations**, added in C5, extended in C6 (`GameDefinition`/`GameSession`/`GameContext`/`GameResult`/`IGameEngine`/`GameFlowController`/`GameRegistry`/`GameCatalog`, `Content/` incl. `ContentValidator`, `Analytics/`, `Clasico/`). Never references Networking or UI. C8.1: `Clasico/ClasicoGameEngine` (one fixed Q&A rhythm) was deleted and replaced by `Clasico/ClasicoSessionDirector` (still one `IGameEngine`, now hosting a sequence of heterogeneous microgames) plus `Clasico/Microgames/` — `MicrogameArchetype`, four Challenge Type data classes (`ClassificationChallenge`/`TrueFalseChallenge`/`EquationChallenge`/`ErrorDetectionChallenge`), `MicrogameContentValidator`, `ClasicoMicrogameLibrary` (in-code sample content + sequencing), and two archetype engines (`SelectionMicrogameEngine`, `BalanceMicrogameEngine`). `Content/`'s `QuestionSet`-family types are kept but no longer referenced by Clásico — see `Docs/C6_GAME_REGISTRY_CONTENT_PIPELINE.md` and `Docs/C8_1_GOLD_MICROGAME_SLICE.md`. |
 | `Hermit.Editor` | `Assets/Hermit/Editor/` | Core | Editor-only tooling. Empty today. |
 | `Hermit.Tests.EditMode` | `Assets/Hermit/Tests/EditMode/` | Core, Networking, Games | Pure-logic tests, Editor platform only. |
 | `Hermit.Tests.PlayMode` | `Assets/Hermit/Tests/PlayMode/` | Runtime, Games | Tests that need the runtime loop (Bootstrap lives in Runtime now, not Core). |
@@ -138,6 +138,32 @@ above and `Docs/C5_GAME_FRAMEWORK.md` ("Content separation") for
 `Content/Resources/C5SampleQuestions.asset`; `Data/Resources/` also now
 holds `HermitTheme.asset` (C7).
 
+## C8.1 objective
+
+Gold microgame runtime + four playable worlds — implementation complete,
+verified by an automated compile + full EditMode/PlayMode suite run +
+standalone Windows build (all green, via Unity CLI batch mode), pending the
+user's own manual pass. Clásico's C5-C7 fixed Q&A rhythm
+(`ClasicoGameEngine`, deleted this phase) is replaced by
+`ClasicoSessionDirector` — still exactly one `IGameEngine`, now hosting a
+sequence of heterogeneous microgames instead of one question shape.
+Ships the C8.0 Design Lock's Gold Slice: Western Shootout (Aim&Select /
+Classification), TV Game Show (Choose Side / TrueFalse), Balance Machine
+(Balance / Equation), Detective Lineup (Detect Error / ErrorDetection) —
+Boxing explicitly deferred. `GameFlowController`/`GameRegistry` gained zero
+new states or knowledge of microgames; Clásico is still one registry entry.
+`ClasicoHud` split into outer "Hermit chrome" (score/streak/timer/command/
+feedback/transitions/results) plus four separately-built presenters in the
+new `GameFramework/Microgames/` folder, avoiding both a 1000-line Hud and a
+`switch`-driven engine — the only `switch` in the new code is presentation
+routing (which presenter to show), never game logic. A real sequencing bug
+(an in-place duplicate-patch algorithm that could cycle back to its own
+broken state) was caught by an automated test before ever reaching the
+user, and fixed with a smaller, more general rejection-sampling approach
+rather than a special case. Full design source, migration decision,
+per-microgame writeups, and the manual validation checklist: see
+`Docs/C8_CLASICO_DESIGN_LOCK.md` and `Docs/C8_1_GOLD_MICROGAME_SLICE.md`.
+
 ## C7 objective
 
 Shell real + Clásico gameplay redesign v1 + visual language prototype —
@@ -148,7 +174,8 @@ wrapping the same `GameHub`/`GameSelectorHud`/`ClasicoGameHost` stack
 `02_GameplaySandbox` uses (extracted into `GameHub` this phase specifically
 to avoid duplicating that composition logic) behind a Home screen. Clásico
 gained a countdown, a visible timer, a streak/combo bonus, and
-punch/shake/fade feedback — all inside `ClasicoGameEngine`/`ClasicoGameHost`,
+punch/shake/fade feedback — all inside `ClasicoGameEngine` (superseded in
+C8.1 by `ClasicoSessionDirector` — see "C8.1 objective" above)/`ClasicoGameHost`,
 with zero new `GameFlowController` states. A first reusable visual language
 (`HermitTheme` + a `RuntimeUIFactory` refactor) replaced C5/C6's
 per-file-hardcoded colors. A real bug found during manual validation

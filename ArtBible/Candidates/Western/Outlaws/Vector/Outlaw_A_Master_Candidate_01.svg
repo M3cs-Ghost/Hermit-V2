@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Outlaw_A_Master_Candidate_01.svg
+  Hand-authored vector reinterpretation of ArtBible/Candidates/Western/Outlaws/Outlaw_A_Neutral_Candidate_01.png.
+  Reference-only: the raster source informed proportions, silhouette, and color
+  identity (tall/lean/wiry build, wide-brim hat, long duster coat, holstered
+  gun, suspicious narrow-eyed expression). No raster asset is embedded; every
+  visible shape below is a clean vector path/shape. Not a pixel-trace — shapes
+  are deliberately simplified for game-sprite readability at 300-450px tall.
+  Flat "hard cel" shading only: a base tone, one shadow tone, and (on the hat/
+  coat/legs) one highlight sliver per major mass — no gradients, no noise.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 1000" width="760" height="1000">
+  <title>Outlaw A — Western Vector Master</title>
+
+  <g id="Outlaw_A">
+
+    <!-- ============ SHADOW (drawn first = behind everything) ============ -->
+    <g id="Shadow">
+      <ellipse cx="378" cy="972" rx="150" ry="18" fill="#000000" opacity="0.32"/>
+    </g>
+
+    <!-- ============ LEGS (behind boots/torso, long + thin for the lean/wiry build) ============ -->
+    <g id="LeftLeg">
+      <path d="M310,585 C300,650 295,730 292,800 C290,860 292,910 298,935 L340,933
+               C336,900 338,850 340,800 C342,730 346,650 350,590 C336,585 322,584 310,585 Z"
+            fill="#402c1b"/>
+      <!-- shadow sliver, screen-right (inner) edge of the leg -->
+      <path d="M332,590 C338,650 342,730 344,800 C346,860 344,905 341,930 L328,932
+               C326,900 328,850 330,800 C332,730 336,650 340,590 Z"
+            fill="#281a0f"/>
+    </g>
+    <g id="RightLeg">
+      <path d="M420,585 C428,650 434,730 438,800 C440,860 438,910 432,935 L392,933
+               C396,900 394,850 396,800 C398,730 402,650 398,590 C410,585 410,584 420,585 Z"
+            fill="#3a2818"/>
+      <!-- shadow sliver, screen-right (outer) edge -->
+      <path d="M420,585 C428,650 434,730 438,800 C440,860 438,910 432,935 L420,934
+               C424,900 422,850 420,800 C418,730 416,650 414,590 Z"
+            fill="#251809"/>
+    </g>
+
+    <!-- ============ BOOTS (pointed western boots) ============ -->
+    <g id="LeftBoot">
+      <path d="M292,935 C284,948 278,962 292,971 C314,982 352,980 360,966
+               C363,954 350,943 332,936 C318,932 302,932 292,935 Z"
+            fill="#3a2814"/>
+      <path d="M292,935 C284,948 278,962 292,971 C300,975 310,977 320,977
+               C310,968 300,955 300,940 Z"
+            fill="#241608"/>
+    </g>
+    <g id="RightBoot">
+      <path d="M432,935 C440,948 446,962 432,971 C410,982 372,980 364,966
+               C361,954 374,943 392,936 C406,932 422,932 432,935 Z"
+            fill="#33210f"/>
+      <path d="M420,940 C424,952 424,964 414,972 C406,976 396,977 388,976
+               C400,968 412,955 414,940 Z"
+            fill="#1f1408"/>
+    </g>
+
+    <!-- ============ BELT (waist strap, buckle, holster) ============ -->
+    <g id="Belt">
+      <path d="M298,540 L478,540 L480,562 L296,564 Z" fill="#4a3218"/>
+      <path d="M298,552 L478,552 L480,562 L296,564 Z" fill="#2e1e0c"/>
+      <rect x="368" y="543" width="26" height="18" rx="2" fill="#c9ccce"/>
+      <rect x="371" y="546" width="20" height="12" rx="1" fill="#8b8f93"/>
+    </g>
+
+    <!-- ============ TORSO / COAT (long duster, popped collar, tapered waist, flared skirt) ============ -->
+    <g id="Torso">
+      <path d="M362,246 L400,244 L404,270 L360,270 Z" fill="#a3714a"/>
+    </g>
+
+    <g id="Shirt">
+      <!-- dark undergarment glimpse behind the coat's open front -->
+      <path d="M362,270 L400,268 L404,420 L358,420 Z" fill="#161210"/>
+    </g>
+
+    <g id="Vest">
+      <!-- main coat mass -->
+      <path d="M300,250 C280,270 270,320 268,380 C266,440 270,500 285,545
+               C300,575 330,585 380,585 C430,585 460,575 475,545
+               C490,500 494,440 492,380 C490,320 480,270 460,250
+               C430,235 390,232 380,232 C360,232 320,238 300,250 Z"
+            fill="#7a5233"/>
+      <!-- shadow half, screen-right -->
+      <path d="M380,250 C400,255 430,270 445,300 C460,340 465,420 460,500
+               C455,545 440,570 400,582 L380,582
+               C380,470 380,360 380,250 Z"
+            fill="#4e3420"/>
+      <!-- warm rim-light sliver, screen-left edge -->
+      <path d="M300,255 C285,290 275,340 272,400 C270,460 274,510 285,545
+               L300,545 C288,500 285,440 288,380 C291,330 298,285 310,260 Z"
+            fill="#b98a52"/>
+      <!-- popped collar flaps -->
+      <path d="M300,250 L330,231 L346,255 L318,269 Z" fill="#8a5d3a"/>
+      <path d="M460,250 L432,231 L416,255 L444,269 Z" fill="#5e3e26"/>
+    </g>
+
+    <!-- ============ ARMS ============ -->
+    <g id="LeftArm">
+      <path d="M300,258 C282,288 271,335 273,390 C271,430 271,465 277,495
+               L299,491 C295,462 294,432 296,392 C298,340 304,295 316,262 Z"
+            fill="#6e4a2e"/>
+      <path d="M300,258 C288,283 279,315 275,352 L292,355 C296,322 302,290 314,262 Z"
+            fill="#412c1a"/>
+      <!-- hand, resting above the holster -->
+      <path d="M275,491 C270,503 272,517 283,523 C295,527 303,517 300,504
+               L277,495 Z" fill="#b57e53"/>
+    </g>
+    <g id="RightArm">
+      <path d="M460,258 C476,288 485,330 483,388 C481,430 478,462 470,488
+               L448,483 C454,450 456,415 456,388 C456,335 452,298 440,265 Z"
+            fill="#5e3e26"/>
+      <path d="M460,258 C472,285 480,320 481,360 L462,362
+               C460,325 456,292 448,268 Z" fill="#412c1a"/>
+    </g>
+
+    <!-- ============ NECK ============ -->
+    <g id="Neck">
+      <path d="M362,225 L400,223 L406,270 L358,270 Z" fill="#8c5c3c"/>
+    </g>
+
+    <!-- ============ ACCESSORIES (bandana, holster, gun — drawn after Neck so the
+         bandana correctly drapes over/in front of it, not hidden behind it) ============ -->
+    <g id="Accessories">
+      <!-- bandana, draped over the collar -->
+      <path d="M355,240 L405,238 L412,268 L400,286 L380,291 L360,283 L348,266 Z"
+            fill="#8a3b2e"/>
+      <path d="M380,244 L405,243 L410,265 L398,281 L382,287 Z" fill="#5c2820"/>
+      <!-- holster strap, bridging the belt to the pouch below -->
+      <path d="M277,558 L301,558 L301,569 L277,569 Z" fill="#38260f"/>
+      <!-- holster pouch, hanging from the belt on the left hip -->
+      <path d="M269,566 C260,578 259,598 269,613 C282,624 303,620 307,602
+               C309,584 298,570 283,566 Z" fill="#4a3018"/>
+      <path d="M283,566 C295,577 301,594 300,608 L307,602
+               C309,584 298,570 283,566 Z" fill="#2c1c0c"/>
+      <!-- gun grip, in the resting hand -->
+      <path d="M274,495 L292,489 L297,510 L279,514 Z" fill="#241d19"/>
+      <path d="M292,489 L306,485 L309,500 L297,504 Z" fill="#8b8f93"/>
+    </g>
+
+    <!-- ============ HAIR (small wisps at the temples, mostly hat-covered) ============ -->
+    <g id="Hair">
+      <path d="M335,142 L346,138 L349,166 L337,169 Z" fill="#1c140d"/>
+      <path d="M420,140 L433,136 L431,162 L419,166 Z" fill="#1c140d"/>
+    </g>
+
+    <!-- ============ FACE ============ -->
+    <g id="Face">
+      <path d="M335,148 C330,188 338,222 365,242 C387,254 408,249 424,231
+               C440,211 442,174 434,146 C410,136 358,136 335,148 Z"
+            fill="#c68a5c"/>
+      <!-- brim-cast shadow, a thin band just under the brim's inner edge -->
+      <path d="M335,148 C332,158 332,167 334,176 L434,166 C434,158 434,151 434,146
+               C410,136 358,136 335,148 Z" fill="#8c5c3c" opacity="0.55"/>
+      <!-- narrow, suspicious eyes -->
+      <path d="M352,183 L372,180 L370,194 L351,196 Z" fill="#15100c"/>
+      <path d="M389,178 L409,174 L409,187 L391,190 Z" fill="#15100c"/>
+      <!-- nose/mustache -->
+      <path d="M372,208 L396,206 L402,220 L368,222 Z" fill="#2a1c12"/>
+      <!-- goatee -->
+      <path d="M378,226 L395,224 L389,246 L382,246 Z" fill="#1c140d"/>
+    </g>
+
+    <!-- ============ HAT ============ -->
+    <g id="Hat">
+      <!-- crown -->
+      <path d="M342,95 C340,64 351,30 384,20 C417,25 431,53 428,90
+               C416,101 356,101 342,95 Z" fill="#6b4728"/>
+      <path d="M384,20 C402,26 415,42 420,64 L398,68 C396,50 391,33 384,20 Z"
+            fill="#43301d"/>
+      <path d="M342,95 C341,77 344,56 353,40 L363,44 C357,60 354,79 355,93 Z"
+            fill="#8a6238"/>
+      <!-- band -->
+      <path d="M340,88 L430,86 L432,99 L338,101 Z" fill="#2b1d12"/>
+      <!-- brim: raised and thinned so the face/eyes below stay clear of it -->
+      <path d="M272,133 C282,110 328,95 378,93 C452,90 528,95 545,120
+               C550,133 536,144 495,148 C420,153 322,153 293,146
+               C278,143 270,139 272,133 Z" fill="#6b4728"/>
+      <path d="M378,93 C452,90 528,95 545,120 C550,133 536,144 495,148
+               C458,150 428,149 404,146 C418,128 413,106 399,94
+               C392,93 385,93 378,93 Z" fill="#43301d"/>
+      <path d="M272,133 C282,110 320,97 363,94 C354,109 351,128 358,145
+               C330,146 302,144 293,146 C278,143 270,139 272,133 Z" fill="#8a6238"/>
+    </g>
+
+  </g>
+</svg>
