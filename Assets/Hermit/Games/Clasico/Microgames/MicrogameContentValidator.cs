@@ -55,6 +55,16 @@ namespace Hermit.Games.Clasico.Microgames
                 issues.Add($"[{label}] CorrectCategory must appear exactly once in CategoryOptions.");
             }
 
+            // C8.1i content bank expansion: Western now authors a real
+            // Medium tier (see CorrienteCategories in
+            // ClasicoMicrogameLibrary), so Difficulty is no longer just an
+            // unchecked default — enforced the same way every other
+            // Challenge Type already is.
+            if (challenge.Difficulty != "easy" && challenge.Difficulty != "medium")
+            {
+                issues.Add($"[{label}] Difficulty must be 'easy' or 'medium' for this Gold slice, was '{challenge.Difficulty}'.");
+            }
+
             return issues;
         }
 
@@ -82,6 +92,19 @@ namespace Hermit.Games.Clasico.Microgames
             if (string.IsNullOrEmpty(challenge.Statement))
             {
                 issues.Add($"[{label}] Statement is empty.");
+            }
+
+            // C8.1i content bank expansion: mirrors the DebitCredit/
+            // ErrorDetection rules below — every statement now carries a
+            // real teaching explanation and a meaningful Difficulty tier.
+            if (string.IsNullOrEmpty(challenge.FeedbackExplanation))
+            {
+                issues.Add($"[{label}] FeedbackExplanation is empty.");
+            }
+
+            if (challenge.Difficulty != "easy" && challenge.Difficulty != "medium")
+            {
+                issues.Add($"[{label}] Difficulty must be 'easy' or 'medium' for this Gold slice, was '{challenge.Difficulty}'.");
             }
 
             return issues;
@@ -130,6 +153,88 @@ namespace Hermit.Games.Clasico.Microgames
             return issues;
         }
 
+        public static IReadOnlyList<string> Validate(DebitCreditChallenge challenge)
+        {
+            var issues = new List<string>();
+            var label = string.IsNullOrEmpty(challenge?.Id) ? "(empty id)" : challenge.Id;
+
+            if (challenge == null)
+            {
+                issues.Add("DebitCreditChallenge is null.");
+                return issues;
+            }
+
+            if (string.IsNullOrEmpty(challenge.Id))
+            {
+                issues.Add($"[{label}] Id is empty.");
+            }
+
+            if (challenge.ContentVersion <= 0)
+            {
+                issues.Add($"[{label}] ContentVersion must be >= 1.");
+            }
+
+            if (string.IsNullOrEmpty(challenge.TransactionText))
+            {
+                issues.Add($"[{label}] TransactionText is empty.");
+            }
+
+            if (string.IsNullOrEmpty(challenge.CorrectDebitAccount))
+            {
+                issues.Add($"[{label}] CorrectDebitAccount is empty.");
+            }
+
+            if (string.IsNullOrEmpty(challenge.CorrectCreditAccount))
+            {
+                issues.Add($"[{label}] CorrectCreditAccount is empty.");
+            }
+
+            if (!string.IsNullOrEmpty(challenge.CorrectDebitAccount)
+                && challenge.CorrectDebitAccount == challenge.CorrectCreditAccount)
+            {
+                issues.Add($"[{label}] CorrectDebitAccount and CorrectCreditAccount must differ.");
+            }
+
+            if (challenge.AccountOptions == null || challenge.AccountOptions.Length < 3)
+            {
+                issues.Add($"[{label}] Needs at least 3 AccountOptions.");
+                return issues;
+            }
+
+            if (challenge.AccountOptions.Distinct().Count() != challenge.AccountOptions.Length)
+            {
+                issues.Add($"[{label}] AccountOptions has duplicates.");
+            }
+
+            if (challenge.AccountOptions.Count(o => o == challenge.CorrectDebitAccount) != 1)
+            {
+                issues.Add($"[{label}] CorrectDebitAccount must appear exactly once in AccountOptions.");
+            }
+
+            if (challenge.AccountOptions.Count(o => o == challenge.CorrectCreditAccount) != 1)
+            {
+                issues.Add($"[{label}] CorrectCreditAccount must appear exactly once in AccountOptions.");
+            }
+
+            // C8.1h content-quality audit: every Balance round's recap
+            // panel has a dedicated slot for FeedbackExplanation (see
+            // BalanceMachinePresenter.ShowRecap), but every one of the 15
+            // shipped challenges left it empty — the "why" was silently
+            // never shown. Now enforced the same way Detective's
+            // Explanation already is.
+            if (string.IsNullOrEmpty(challenge.FeedbackExplanation))
+            {
+                issues.Add($"[{label}] FeedbackExplanation is empty.");
+            }
+
+            if (challenge.Difficulty != "easy" && challenge.Difficulty != "medium")
+            {
+                issues.Add($"[{label}] Difficulty must be 'easy' or 'medium' for this Gold slice, was '{challenge.Difficulty}'.");
+            }
+
+            return issues;
+        }
+
         public static IReadOnlyList<string> Validate(ErrorDetectionChallenge challenge)
         {
             var issues = new List<string>();
@@ -165,6 +270,31 @@ namespace Hermit.Games.Clasico.Microgames
             if (challenge.AnomalyIndex < 0 || challenge.AnomalyIndex >= challenge.Items.Length)
             {
                 issues.Add($"[{label}] AnomalyIndex is out of range.");
+            }
+
+            // C8.1g.2: the redesign's new content contract — every round
+            // must carry real framing/teaching text, not just a bare item
+            // list, and Difficulty must actually mean something (brief
+            // section 12: only "easy"/"medium" for this Gold slice, no
+            // ambiguous expert tier yet).
+            if (string.IsNullOrEmpty(challenge.CasePrompt))
+            {
+                issues.Add($"[{label}] CasePrompt is empty.");
+            }
+
+            if (string.IsNullOrEmpty(challenge.RuleLabel))
+            {
+                issues.Add($"[{label}] RuleLabel is empty.");
+            }
+
+            if (string.IsNullOrEmpty(challenge.Explanation))
+            {
+                issues.Add($"[{label}] Explanation is empty.");
+            }
+
+            if (challenge.Difficulty != "easy" && challenge.Difficulty != "medium")
+            {
+                issues.Add($"[{label}] Difficulty must be 'easy' or 'medium' for this Gold slice, was '{challenge.Difficulty}'.");
             }
 
             return issues;

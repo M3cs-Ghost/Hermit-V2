@@ -58,12 +58,20 @@ namespace Hermit.Runtime.GameFramework
         /// from the top by exactly this amount (see <see cref="BuildPlayingPanel"/>)
         /// rather than by trusting every current and future presenter to
         /// individually leave enough clearance. Found overlapping in C8.1
-        /// manual validation: Western's "Concept", Detective's "GroupLabel",
+        /// manual validation: Western's "Concept", Detective's "RuleLabel",
         /// and Balance's "Equation" text all previously sat inside the
         /// Timer bar's own vertical span, all top-anchored (0.5, 1) to their
         /// own root panel — which used to stretch to the full stage,
         /// starting right at the true top of the screen.</summary>
-        private const float TopHudReservedHeight = 112f;
+        // C8.1f.2 manual-acceptance fix: reduced from 112f — measured the
+        // actual HUD content's real footprint (Progress/Streak/Score row,
+        // TimerBar, Salir button) and found the reserved band had more
+        // headroom than any of them needed, pushing every presenter's
+        // world down by that unused margin. Tightened alongside the
+        // Progress/Streak/Score/TimerBar/AbortButton offsets below so nothing
+        // clips: AbortButton (the tallest/lowest element) now bottoms out
+        // at 98 units from the top, 2 units of margin inside this band.
+        private const float TopHudReservedHeight = 100f;
 
         private Coroutine _punchRoutine;
         private Coroutine _shakeRoutine;
@@ -141,7 +149,18 @@ namespace Hermit.Runtime.GameFramework
             _timerFill.color = Theme.Accent;
             _commandText.text = command;
             _commandText.gameObject.SetActive(true);
-            _audioSource.PlayOneShot(_commandClip);
+
+            // C8.1f.2 manual-acceptance fix: this used to fire unconditionally,
+            // even for AimSelect's suppressed empty command text (C8.1d.7 —
+            // WesternShootoutPresenter shows its own cue instead). That made
+            // this generic "TUK" cue play at the start of every Western
+            // round regardless, landing right on top of the round's own
+            // gunshot/reveal audio and reading as a duplicated sound. The
+            // audio cue is only ever meaningful alongside real command text.
+            if (!string.IsNullOrEmpty(command))
+            {
+                _audioSource.PlayOneShot(_commandClip);
+            }
         }
 
         public void HideCommand()
@@ -166,15 +185,35 @@ namespace Hermit.Runtime.GameFramework
         /// outlaw red/green tint and hit reaction already communicate
         /// correctness, so its own generic ding was found redundant, while
         /// every other archetype still wants it exactly as before.</summary>
-        public void RenderFeedback(bool correct, int score, int streak, int streakBonus, bool playAudio = true)
+        /// <summary>C8.1j: <paramref name="showBanner"/> mirrors the existing
+        /// <paramref name="playAudio"/> opt-out exactly (same mechanism,
+        /// same precedent — AimSelect/DetectError already opt out of this
+        /// method's generic audio ding because they have their own more
+        /// specific feedback). Balance now opts out of the generic
+        /// "¡Correcto!/Incorrecto" TEXT banner too: it already has its own,
+        /// more specific verdict ("EQUILIBRIO"/"DESEQUILIBRIO" at the
+        /// machine pivot) plus its own teaching recap panel, so the shared
+        /// banner was a redundant third label stacked on top of two more
+        /// specific ones — exactly the "INCORRECTO + DESEQUILIBRIO"
+        /// stacking the C8.1j audit flagged, and (since both are bottom-
+        /// center anchored) the literal source of the reported verdict/
+        /// recap overlap. Score/streak text is unaffected — never gated.</summary>
+        public void RenderFeedback(bool correct, int score, int streak, int streakBonus, bool playAudio = true, bool showBanner = true)
         {
             _scoreText.text = $"Puntaje: {score}";
             _streakText.text = streak > 0 ? $"Racha: {streak}" : string.Empty;
 
-            _feedbackText.text = correct
-                ? streakBonus > 0 ? $"¡Correcto! +{streakBonus} combo" : "¡Correcto!"
-                : "Incorrecto";
-            _feedbackText.color = correct ? Theme.Correct : Theme.Incorrect;
+            if (showBanner)
+            {
+                _feedbackText.text = correct
+                    ? streakBonus > 0 ? $"¡Correcto! +{streakBonus} combo" : "¡Correcto!"
+                    : "Incorrecto";
+                _feedbackText.color = correct ? Theme.Correct : Theme.Incorrect;
+            }
+            else
+            {
+                _feedbackText.text = string.Empty;
+            }
 
             if (correct)
             {
@@ -253,15 +292,15 @@ namespace Hermit.Runtime.GameFramework
 
             _progressText = RuntimeUIFactory.CreateText(
                 _playingPanel, "Progress", "Microjuego 1/9", Theme.CaptionSize, TextAnchor.MiddleLeft, Theme.TextSecondary,
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(150, -36), new Vector2(260, 32));
+                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(150, -30), new Vector2(260, 32));
 
             _streakText = RuntimeUIFactory.CreateText(
                 _playingPanel, "Streak", string.Empty, Theme.CaptionSize, TextAnchor.MiddleCenter, Theme.Warning,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -36), new Vector2(240, 32));
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -30), new Vector2(240, 32));
 
             _scoreText = RuntimeUIFactory.CreateText(
                 _playingPanel, "Score", "Puntaje: 0", Theme.CaptionSize, TextAnchor.MiddleRight, Theme.TextPrimary,
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-150, -36), new Vector2(240, 32));
+                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-150, -30), new Vector2(240, 32));
 
             // Thinner than the C8.1 prototype (was 14px) — its own reserved
             // band (TopHudReservedHeight) already keeps presenter content
@@ -270,11 +309,15 @@ namespace Hermit.Runtime.GameFramework
             // a HUD instrument, per the C8.1 polish request.
             _timerFill = RuntimeUIFactory.CreateFillBar(
                 _playingPanel, "TimerBar", Theme.Accent,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -66), new Vector2(900, 8));
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -56), new Vector2(900, 8));
 
+            // C8.1f.2: height trimmed 44->36 alongside the tightened offset
+            // below — still a comfortably-sized click target, just no
+            // longer the tallest thing forcing TopHudReservedHeight wider
+            // than the rest of the HUD row actually needs.
             _abortButton = RuntimeUIFactory.CreateButton(
                 _playingPanel, "AbortButton", "Salir",
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(70, -100), new Vector2(120, 44));
+                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(70, -80), new Vector2(120, 36));
             _abortButton.onClick.AddListener(() => AbortRequested?.Invoke());
 
             _commandText = RuntimeUIFactory.CreateText(

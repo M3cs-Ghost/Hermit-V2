@@ -290,7 +290,8 @@ namespace Hermit.Tests.PlayMode
             //
             // Manual validation found the Timer bar visually crossing through
             // presenter "concept" text (e.g. "Cuentas Deudoras") — Western's
-            // "Concept", Detective's "GroupLabel", and Balance's "Equation"
+            // "Concept", Detective's "RuleLabel" (renamed from GroupLabel in
+            // C8.1g.2), and Balance's "Equation"
             // were all top-anchored (0.5, 1) to their own presenter root,
             // which used to stretch to the true top of the stage, landing
             // them inside the Timer bar's own vertical span. Fixed generally
@@ -304,7 +305,7 @@ namespace Hermit.Tests.PlayMode
             Assert.IsNotNull(timerBar, "TimerBar object is missing.");
             var timerRect = timerBar.GetComponent<RectTransform>();
 
-            var conceptElementNames = new[] { "Concept", "GroupLabel", "Cue", "Equation", "Statement" };
+            var conceptElementNames = new[] { "Concept", "RuleLabel", "Cue", "Equation", "Statement" };
             var conceptElementsChecked = 0;
             foreach (var presenterName in PresenterNames)
             {

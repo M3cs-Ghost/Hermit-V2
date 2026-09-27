@@ -374,5 +374,354 @@ namespace Hermit.Runtime.GameFramework
             clip.SetData(data, 0);
             return clip;
         }
+
+        /// <summary>C8.1f.3 originally built this from two pure sine tones
+        /// (420Hz + an 840Hz octave harmonic) with an exponential decay —
+        /// C8.1f.4's own human Gold review reported this read as exactly
+        /// the "TUU" / musical-chime problem the brief now explicitly bans
+        /// ("STOP using tonal/polyphonic procedural success sounds"). Two
+        /// pure sine tones a clean octave apart is, acoustically, a tuned
+        /// interval — it cannot help but read as a little musical sting no
+        /// matter how short the decay. Rebuilt from noise instead: a very
+        /// short, sharply high-pass-filtered noise transient (a real
+        /// latch/solenoid snap has almost no fundamental pitch, just a
+        /// bright, fast click) plus a brief, LOW, heavily-damped noise
+        /// thump underneath for weight — never a sine wave, so there is no
+        /// pitch for the ear to lock onto as "a note." This is still only
+        /// the temporary procedural fallback (brief section 13) — the
+        /// project intends to replace it with a supplied
+        /// Balance_CorrectLock audio asset (see
+        /// RuntimeUIFactory.LoadAudio's own "Audio/Gold/Balance/..." path
+        /// in BalanceMachinePresenter.BuildAudio).</summary>
+        public static AudioClip MechanicalClack(string name, float duration, float volume = 0.4f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(7373);
+
+            const float snapDuration = 0.010f;
+            const float thumpDecay = 55f;
+            var previousSnapNoise = 0f;
+            var previousThumpNoise = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+
+                // Snap: bright, almost-unfiltered noise, gone in ~10ms — the
+                // metallic "click" of a latch/pin seating, no fundamental
+                // pitch.
+                var snapRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousSnapNoise = Mathf.Lerp(previousSnapNoise, snapRaw, 0.92f);
+                var snapEnvelope = t < snapDuration ? Mathf.Pow(1f - t / snapDuration, 2f) : 0f;
+                var snap = previousSnapNoise * snapEnvelope;
+
+                // Thump: heavily low-passed noise (no discernible pitch,
+                // just weight) under the snap, decaying quickly — the
+                // mechanism's own mass settling into the lock.
+                var thumpRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousThumpNoise = Mathf.Lerp(previousThumpNoise, thumpRaw, 0.08f);
+                var thumpEnvelope = Mathf.Exp(-thumpDecay * t);
+                var thump = previousThumpNoise * thumpEnvelope * 0.8f;
+
+                data[i] = Mathf.Clamp((snap + thump) * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>C8.1f.3 originally beat two close sine tones (96Hz vs
+        /// 104Hz) against each other for the "something is struggling"
+        /// read — C8.1f.4 found any pair of sustained sine tones,
+        /// beating or not, reads as tonal/musical rather than mechanical.
+        /// Rebuilt as pure noise: a single heavily low-passed noise bed
+        /// (the low rumble of strain) with a coarser, brighter noise layer
+        /// riding on top for the "grinding" texture — no sine content at
+        /// all. Temporary procedural fallback only (brief section 13) —
+        /// see <see cref="MechanicalClack"/>'s own doc-comment for the
+        /// intended supplied-asset replacement (Balance_IncorrectJam).</summary>
+        public static AudioClip MechanicalJam(string name, float duration, float volume = 0.32f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(5151);
+            var previousRumble = 0f;
+            var previousGrind = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var envelope = Mathf.Clamp01((duration - t) / duration);
+
+                var rumbleRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousRumble = Mathf.Lerp(previousRumble, rumbleRaw, 0.05f);
+                var rumble = previousRumble * 0.55f;
+
+                var grindRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousGrind = Mathf.Lerp(previousGrind, grindRaw, 0.35f);
+                var grind = previousGrind * 0.30f;
+
+                data[i] = Mathf.Clamp((rumble + grind) * envelope * envelope * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>C8.1f.4: a short, bright noise click — the temporary
+        /// fallback for the token-insertion seat cue (Balance_TokenInsert
+        /// once supplied). Deliberately noise-only (no sine tone) — a real
+        /// switch/latch contact click has no singable pitch, unlike the
+        /// pure-tone "Tone" generator this replaces for this specific
+        /// use.</summary>
+        public static AudioClip MechanicalClick(string name, float duration, float volume = 0.22f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(9911);
+            var previous = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var raw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previous = Mathf.Lerp(previous, raw, 0.85f);
+                var envelope = t < duration ? Mathf.Pow(1f - t / duration, 3f) : 0f;
+                data[i] = Mathf.Clamp(previous * envelope * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>C8.1f.4: a textured, rhythmically-modulated noise bed —
+        /// the temporary fallback for the machine's "processing/thinking"
+        /// cue (Balance_Processing once supplied) that plays under the
+        /// beam's own small analytical micro-movements. A steady amplitude
+        /// pulse (like a slowly ratcheting gear train) riding on filtered
+        /// noise, never a held pitch, so it never reads as a drone/pad
+        /// note.</summary>
+        public static AudioClip MechanicalWhir(string name, float duration, float volume = 0.10f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(3131);
+            var previous = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var raw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previous = Mathf.Lerp(previous, raw, 0.12f);
+
+                // A slow ratchet-like pulse (~6.5Hz) modulating the noise
+                // bed's own amplitude — reads as a mechanism ticking over,
+                // not a sustained tone.
+                var ratchet = 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(2f * Mathf.PI * 6.5f * t));
+                var fadeIn = Mathf.Clamp01(t / 0.12f);
+                var fadeOut = Mathf.Clamp01((duration - t) / 0.15f);
+
+                data[i] = Mathf.Clamp(previous * ratchet * fadeIn * fadeOut * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        // --- C8.1g.2: Detective's own procedural audio identity ---
+        // temporary fallbacks only (brief section 16 — "do not create
+        // final audio yet"), used only when RuntimeUIFactory.LoadAudio
+        // can't find a real Resources/Audio/Gold/Detective/Detective_*
+        // asset. Deliberately avoid every other archetype's sonic
+        // language (no gunshot crack, no mechanical latch/whir, no
+        // fanfare/chime sweep) — evidence, paper/file, camera/spotlight,
+        // and a restrained investigative reveal instead.
+
+        /// <summary>Detective_CaseOpen: a crisp camera-shutter double-click —
+        /// the auditor "snapping a photo" of the lineup as the case opens.
+        /// Two short, bright, near-unfiltered noise transients separated by
+        /// a brief gap (a real shutter reads as two discrete metal snaps,
+        /// not one) — related in technique to <see cref="MechanicalClick"/>
+        /// but deliberately doubled and brighter.</summary>
+        public static AudioClip CameraShutterClick(string name, float duration, float volume = 0.22f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(2468);
+            var previous = 0f;
+
+            var firstClickEnd = duration * 0.35f;
+            var secondClickStart = duration * 0.55f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var raw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previous = Mathf.Lerp(previous, raw, 0.9f);
+
+                float envelope;
+                if (t < firstClickEnd)
+                {
+                    envelope = Mathf.Pow(1f - t / firstClickEnd, 3f);
+                }
+                else if (t >= secondClickStart)
+                {
+                    var localT = (t - secondClickStart) / (duration - secondClickStart);
+                    envelope = Mathf.Pow(1f - Mathf.Clamp01(localT), 3f);
+                }
+                else
+                {
+                    envelope = 0f;
+                }
+
+                data[i] = Mathf.Clamp(previous * envelope * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Detective_Focus: a very brief, quiet paper-shuffle
+        /// texture — meant to be triggered only on an actual selection
+        /// CHANGE (never every frame the spotlight merely follows an
+        /// unchanged focus), so it reads as "a new dossier being picked
+        /// up," not a spam of ticks. Deliberately the quietest of the five
+        /// Detective cues — a focus change is the most frequent trigger in
+        /// this presenter and must never fatigue.</summary>
+        public static AudioClip PaperRustle(string name, float duration, float volume = 0.08f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(1357);
+            var previous = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var raw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previous = Mathf.Lerp(previous, raw, 0.22f);
+                var flutter = 0.7f + 0.3f * Mathf.Sin(2f * Mathf.PI * 30f * t);
+                var envelope = Mathf.Clamp01((duration - t) / duration);
+                data[i] = Mathf.Clamp(previous * flutter * envelope * envelope * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Detective_Accuse: a firm paper folder slapped onto a
+        /// table — a bright, quick noise crack (the "slap") plus a low,
+        /// short thump underneath (the folder's own weight/impact), read
+        /// together as one confident, decisive gesture. Distinct in
+        /// character from <see cref="MechanicalClack"/> (a metal latch) and
+        /// from any gunshot/machinery cue.</summary>
+        public static AudioClip FileSlap(string name, float duration, float volume = 0.3f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(8642);
+            var previousCrack = 0f;
+            var previousThump = 0f;
+
+            const float crackDuration = 0.02f;
+            const float thumpDecay = 30f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+
+                var crackRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousCrack = Mathf.Lerp(previousCrack, crackRaw, 0.7f);
+                var crackEnvelope = t < crackDuration ? Mathf.Pow(1f - t / crackDuration, 2f) : 0f;
+                var crack = previousCrack * crackEnvelope;
+
+                var thumpRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousThump = Mathf.Lerp(previousThump, thumpRaw, 0.1f);
+                var thumpEnvelope = Mathf.Exp(-thumpDecay * t);
+                var thump = previousThump * thumpEnvelope * 0.7f;
+
+                data[i] = Mathf.Clamp((crack + thump) * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Detective_CorrectReveal: a restrained "evidence
+        /// confirmed" stamp — a short bright tick (the stamp striking the
+        /// paper) immediately followed by a soft, brief low thud (the
+        /// stamp's own weight settling). Deliberately NOT a rising
+        /// musical sweep/fanfare — this project already learned, from
+        /// Balance's own pre-redesign audio, that anything with a clear
+        /// pitch reads as a little musical sting no matter how short — and
+        /// deliberately restrained rather than celebratory, per the brief's
+        /// explicit "no casino green/red explosion" investigative tone.</summary>
+        public static AudioClip EvidenceConfirmChime(string name, float duration, float volume = 0.3f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(1122);
+            var previousTick = 0f;
+            var previousThud = 0f;
+
+            const float tickDuration = 0.012f;
+            const float thudDecay = 22f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+
+                var tickRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousTick = Mathf.Lerp(previousTick, tickRaw, 0.9f);
+                var tickEnvelope = t < tickDuration ? Mathf.Pow(1f - t / tickDuration, 2f) : 0f;
+                var tick = previousTick * tickEnvelope;
+
+                var thudRaw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previousThud = Mathf.Lerp(previousThud, thudRaw, 0.06f);
+                var thudEnvelope = t >= tickDuration ? Mathf.Exp(-thudDecay * (t - tickDuration)) : 0f;
+                var thud = previousThud * thudEnvelope * 0.85f;
+
+                data[i] = Mathf.Clamp((tick + thud) * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Detective_IncorrectReveal: a soft, dull "set aside"
+        /// thud — a single heavily low-passed noise decay with no bright
+        /// transient at all, reading as a folder being closed and put down
+        /// rather than any harsh buzzer. Deliberately quieter and duller
+        /// than <see cref="EvidenceConfirmChime"/> so the two reveals are
+        /// clearly distinguishable without either one being punishing.</summary>
+        public static AudioClip CaseRejectedTone(string name, float duration, float volume = 0.22f)
+        {
+            var sampleCount = Mathf.CeilToInt(SampleRate * duration);
+            var clip = AudioClip.Create(name, sampleCount, 1, SampleRate, false);
+            var data = new float[sampleCount];
+            var rng = new System.Random(3399);
+            var previous = 0f;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var t = i / (float)SampleRate;
+                var raw = (float)(rng.NextDouble() * 2.0 - 1.0);
+                previous = Mathf.Lerp(previous, raw, 0.06f);
+                var envelope = Mathf.Exp(-9f * t);
+                data[i] = Mathf.Clamp(previous * envelope * volume, -1f, 1f);
+            }
+
+            clip.SetData(data, 0);
+            return clip;
+        }
     }
 }

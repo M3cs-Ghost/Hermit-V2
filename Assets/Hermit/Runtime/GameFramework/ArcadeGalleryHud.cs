@@ -120,22 +120,22 @@ namespace Hermit.Runtime.GameFramework
         /// <see cref="RuntimeUIFactory.CreatePortraitFrame"/>, the same
         /// technique this project already uses for character portraits)
         /// rather than a flat rectangle with text. See
-        /// Docs/C9_2_ARCADE_GAME_GALLERY.md, "Art asset strategy" for why
-        /// the poster art is a temporary, explicitly-labeled placeholder
-        /// (an ArtBible Mascot candidate, not dedicated Clásico key art).
-        /// The whole frame is the click/Submit target — the same
-        /// "art/world IS the target" language this project already uses for
-        /// Western's targets and the Hub's own hotspots — named
-        /// "Game_{GameId}" so it launches through the exact same
-        /// GameHub.OnGameLaunchRequested path (and the exact same test
-        /// helper naming convention) GameSelectorHud's button always
-        /// used.</summary>
+        /// Docs/C9_2_ARCADE_GAME_GALLERY.md, "C9.2a" for the key art's own
+        /// provenance — a dedicated Clásico poster candidate (still a
+        /// production *candidate*, not yet manually validated), replacing
+        /// C9.2's original ArtBible Mascot placeholder. The whole frame is
+        /// the click/Submit target — the same "art/world IS the target"
+        /// language this project already uses for Western's targets and
+        /// the Hub's own hotspots — named "Game_{GameId}" so it launches
+        /// through the exact same GameHub.OnGameLaunchRequested path (and
+        /// the exact same test helper naming convention) GameSelectorHud's
+        /// button always used.</summary>
         private void BuildFeaturedCard(GameDefinition definition)
         {
             const float posterHeight = 372f;
             const float posterWidth = 280f; // matches the poster art's own ~928:1232 aspect
 
-            var poster = RuntimeUIFactory.LoadArt("Art/Shell/Arcade/Clasico_FeaturedCard_01");
+            var poster = RuntimeUIFactory.LoadArt("Art/Shell/Arcade/Clasico_KeyArt_01");
             var (frame, portrait) = RuntimeUIFactory.CreatePortraitFrame(
                 _panel, $"Game_{definition.GameId}", poster,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -15), new Vector2(posterWidth, posterHeight),

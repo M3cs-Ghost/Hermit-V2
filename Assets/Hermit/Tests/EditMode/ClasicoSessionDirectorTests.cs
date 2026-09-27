@@ -100,28 +100,21 @@ namespace Hermit.Tests.EditMode
 
                 case MicrogameArchetype.Balance:
                 {
-                    var challenge = director.CurrentEquation;
-                    if (answerCorrectly)
-                    {
-                        var steps = (int)Math.Round((challenge.CorrectValue - challenge.StartValue) / challenge.StepSize);
-                        var direction = Math.Sign(steps);
-                        for (var i = 0; i < Math.Abs(steps); i++)
-                        {
-                            director.NudgeBalance(direction);
-                        }
-                    }
-
-                    director.ConfirmBalance();
-                    wasCorrect = answerCorrectly;
+                    wasCorrect = SubmitDebitCreditAnswer(director, answerCorrectly);
                     break;
                 }
 
                 default: // DetectError
                 {
+                    // C8.1g.2: the engine now resolves against the
+                    // DISPLAY anomaly slot (post-shuffle), not the
+                    // challenge's own authored AnomalyIndex — see
+                    // ClasicoSessionDirector.CurrentErrorDetectionDisplayAnomalyIndex.
                     var challenge = director.CurrentErrorDetection;
-                    var chosen = answerCorrectly ? challenge.AnomalyIndex : (challenge.AnomalyIndex + 1) % challenge.Items.Length;
+                    var displayAnomalyIndex = director.CurrentErrorDetectionDisplayAnomalyIndex;
+                    var chosen = answerCorrectly ? displayAnomalyIndex : (displayAnomalyIndex + 1) % challenge.Items.Length;
                     director.SubmitSelection(chosen);
-                    wasCorrect = chosen == challenge.AnomalyIndex;
+                    wasCorrect = chosen == displayAnomalyIndex;
                     break;
                 }
             }
@@ -129,6 +122,26 @@ namespace Hermit.Tests.EditMode
             director.Tick(0.001f); // Lock -> Feedback
             director.Tick(0.001f); // Feedback -> next Intro (or finished)
             return wasCorrect;
+        }
+
+        /// <summary>C8.1f: submits both the debit and credit picks for the
+        /// currently-showing Balance round in one call — both correct, or
+        /// both wrong, never a Partial (this helper is only used by tests
+        /// that want a clean fully-correct/fully-incorrect result; Partial
+        /// gets its own dedicated tests below).</summary>
+        private static bool SubmitDebitCreditAnswer(ClasicoSessionDirector director, bool answerCorrectly)
+        {
+            var challenge = director.CurrentDebitCredit;
+            var correctDebitIndex = Array.IndexOf(challenge.AccountOptions, challenge.CorrectDebitAccount);
+            var correctCreditIndex = Array.IndexOf(challenge.AccountOptions, challenge.CorrectCreditAccount);
+
+            var debitChoice = answerCorrectly ? correctDebitIndex : (correctDebitIndex + 1) % challenge.AccountOptions.Length;
+            director.SubmitBalanceAccount(debitChoice);
+
+            var creditChoice = answerCorrectly ? correctCreditIndex : (correctCreditIndex + 1) % challenge.AccountOptions.Length;
+            director.SubmitBalanceAccount(creditChoice);
+
+            return answerCorrectly;
         }
 
         [Test]
@@ -237,9 +250,9 @@ namespace Hermit.Tests.EditMode
             switch (director.CurrentArchetype)
             {
                 case MicrogameArchetype.Balance:
-                    director.ConfirmBalance();
-                    director.NudgeBalance(1);
-                    director.ConfirmBalance();
+                    director.SubmitBalanceAccount(0); // locks debit
+                    director.SubmitBalanceAccount(0); // locks credit, resolves
+                    director.SubmitBalanceAccount(0); // must be ignored — already resolved
                     break;
                 default:
                     director.SubmitSelection(0);
@@ -250,8 +263,14 @@ namespace Hermit.Tests.EditMode
             Assert.AreEqual(1, session.Correct + session.Incorrect, "A resolved microgame must not be resolved twice.");
         }
 
+        // --- C8.1f: Debit/Credit replaces the old continuous-nudge Balance
+        // mechanic (see Docs/C8_1F_BALANCE_MECHANIC_REDESIGN.md). The old
+        // Equation-specific invariant test above no longer applies —
+        // CurrentEquation is never populated for a Balance round any more
+        // — and is replaced by tests of the new mechanic's own guarantees.
+
         [Test]
-        public void Equation_ConfirmingWithoutNudging_IsAlwaysIncorrect()
+        public void DebitCredit_NoInputBeforeBothSelectionsLock_MachineStaysNeutral()
         {
             for (var seed = 0; seed < 10; seed++)
             {
@@ -260,9 +279,9 @@ namespace Hermit.Tests.EditMode
                 {
                     if (director.CurrentArchetype == MicrogameArchetype.Balance)
                     {
-                        director.Tick(0.001f);
-                        director.ConfirmBalance();
-                        Assert.IsFalse(director.LastAnswerCorrect, $"Seed {seed}: StartValue must never already equal CorrectValue by construction.");
+                        director.Tick(0.001f); // Intro -> Decision
+                        director.SubmitBalanceAccount(0); // debit only — must not resolve
+                        Assert.IsTrue(director.IsDecisionPhase, $"Seed {seed}: a single (debit-only) selection must not resolve the microgame.");
                         return;
                     }
 
@@ -271,6 +290,64 @@ namespace Hermit.Tests.EditMode
             }
 
             Assert.Fail("No Balance microgame was drawn across 10 seeds — sequencing regressed.");
+        }
+
+        [Test]
+        public void DebitCredit_OnlyOneAccountCorrect_OverallResultIsIncorrect_NeverPartialScore()
+        {
+            for (var seed = 0; seed < 10; seed++)
+            {
+                var (director, session) = BeginDirector(microgameCount: 4, seed: seed);
+                for (var i = 0; i < 4 && !director.IsFinished; i++)
+                {
+                    if (director.CurrentArchetype == MicrogameArchetype.Balance)
+                    {
+                        director.Tick(0.001f); // Intro -> Decision
+                        var challenge = director.CurrentDebitCredit;
+                        var correctDebitIndex = Array.IndexOf(challenge.AccountOptions, challenge.CorrectDebitAccount);
+                        var correctCreditIndex = Array.IndexOf(challenge.AccountOptions, challenge.CorrectCreditAccount);
+                        var wrongCreditChoice = (correctCreditIndex + 1) % challenge.AccountOptions.Length;
+                        var scoreBeforeThisRound = session.Score;
+
+                        director.SubmitBalanceAccount(correctDebitIndex); // right
+                        director.SubmitBalanceAccount(wrongCreditChoice); // wrong
+
+                        Assert.IsFalse(director.LastAnswerCorrect, $"Seed {seed}: exactly one correct account must never score as a full correct answer.");
+                        Assert.AreEqual(scoreBeforeThisRound, session.Score, $"Seed {seed}: a Partial-classified round must not award any score of its own — only full Correct does.");
+                        return;
+                    }
+
+                    ResolveCurrent(director, answerCorrectly: true);
+                }
+            }
+
+            Assert.Fail("No Balance microgame was drawn across 10 seeds — sequencing regressed.");
+        }
+
+        [Test]
+        public void DebitCredit_TimeoutAfterOnlyDebitSelected_NeverSynthesizesACreditAnswer()
+        {
+            var (director, session) = BeginDirector(microgameCount: 4, balanceDecisionWindowSeconds: 2f, seed: 0);
+
+            for (var i = 0; i < 4 && !director.IsFinished; i++)
+            {
+                if (director.CurrentArchetype == MicrogameArchetype.Balance)
+                {
+                    director.Tick(0.001f); // Intro -> Decision
+                    var challenge = director.CurrentDebitCredit;
+                    var correctDebitIndex = Array.IndexOf(challenge.AccountOptions, challenge.CorrectDebitAccount);
+                    director.SubmitBalanceAccount(correctDebitIndex); // debit only, correctly — credit never comes
+
+                    director.Tick(2.1f); // exceed the decision window
+                    Assert.IsFalse(director.LastAnswerCorrect, "A timeout with only one of two selections made must never read as correct.");
+                    Assert.AreEqual(1, session.Incorrect, "A Balance timeout must still count as one incorrect round.");
+                    return;
+                }
+
+                ResolveCurrent(director, answerCorrectly: true);
+            }
+
+            Assert.Fail("No Balance microgame was drawn in this seed's sequence.");
         }
 
         [Test]
@@ -529,13 +606,31 @@ namespace Hermit.Tests.EditMode
                     // defaults to — so each tick is sized off the
                     // definition's own fields with a margin, safely crossing
                     // whichever phase duration actually applies to this round.
-                    director.Tick(Math.Max(definition.EncounterIntroSeconds, definition.CommandBeatSeconds) + 0.5f);
+                    director.Tick(Math.Max(definition.EncounterIntroSeconds, Math.Max(definition.CommandBeatSeconds, definition.GameShowIntroSeconds)) + 0.5f);
                     Assert.IsTrue(director.IsDecisionPhase, $"seed={seed} round={i} ({archetypes[i]}, roundWithinEncounter={roundsWithin[i]}) did not reach Decision after a generous Intro-covering tick.");
 
                     ProductionSubmitAnswer(director, answerCorrectly: true);
 
                     director.Tick(definition.LockSeconds + 0.1f);
-                    director.Tick(definition.FeedbackDisplaySeconds + definition.EncounterOutroSeconds + 0.2f);
+                    // C8.1f.2: Balance's Feedback phase is now its own,
+                    // longer duration (BalanceFeedbackDisplaySeconds) than
+                    // every other non-Encounter archetype's shared
+                    // FeedbackDisplaySeconds — this tick must cover
+                    // whichever one actually applies to the round just
+                    // answered, or the next round's Intro genuinely hasn't
+                    // started yet by the following iteration's Decision check.
+                    // C8.1g.2: Detective now has the same kind of its-own-
+                    // longer-Feedback override for its teaching recap.
+                    // C8.1k: Game Show likewise has its own longer
+                    // Feedback (suspense beat + reveal + explanation hold).
+                    var feedbackSeconds = archetypes[i] == MicrogameArchetype.Balance
+                        ? definition.BalanceFeedbackDisplaySeconds
+                        : archetypes[i] == MicrogameArchetype.DetectError
+                            ? definition.DetectiveFeedbackDisplaySeconds
+                            : archetypes[i] == MicrogameArchetype.ChooseSide
+                                ? definition.GameShowFeedbackDisplaySeconds
+                                : definition.FeedbackDisplaySeconds;
+                    director.Tick(feedbackSeconds + definition.EncounterOutroSeconds + 0.2f);
                 }
 
                 var westernIndices = archetypes
@@ -551,6 +646,126 @@ namespace Hermit.Tests.EditMode
                 Assert.AreEqual(1, roundsWithin[westernIndices[1]], $"seed={seed}: second Western round must be a continuation (round-within-encounter 1).");
                 Assert.AreEqual(2, roundsWithin[westernIndices[2]], $"seed={seed}: third Western round must be the Encounter end (round-within-encounter 2 of 3).");
             }
+        }
+
+        /// <summary>C8.1k: Game Show owns a longer Intro (its broadcast
+        /// preamble) and a longer Feedback (suspense beat + reveal +
+        /// explanation hold); every other non-Encounter archetype must keep
+        /// the shared command beat / feedback length, and the decision
+        /// window itself is unchanged.</summary>
+        [Test]
+        public void GameShow_UsesItsOwnIntroAndFeedbackDurations_OtherArchetypesKeepTheSharedBeats()
+        {
+            var definition = ClasicoGameDefinition.CreateInMemory(
+                "clasico_test", "Clasico Test", 8, decisionWindowSeconds: 5f, balanceDecisionWindowSeconds: 5f,
+                commandBeatSeconds: 0.6f, lockSeconds: 0.2f, feedbackDisplaySeconds: 0.8f,
+                balanceFeedbackDisplaySeconds: 0.8f, detectiveFeedbackDisplaySeconds: 0.8f,
+                gameShowIntroSeconds: 1.5f, gameShowFeedbackDisplaySeconds: 3.4f);
+
+            var director = new ClasicoSessionDirector();
+            director.Begin(new GameContext(NullGameAnalyticsSink.Instance, new Random(0)), definition, new GameSession(definition.GameId));
+
+            var gameShowRounds = 0;
+            for (var i = 0; i < definition.MicrogameCount && !director.IsFinished; i++)
+            {
+                var isGameShow = director.CurrentArchetype == MicrogameArchetype.ChooseSide;
+
+                director.Tick(0.7f);
+                if (isGameShow)
+                {
+                    gameShowRounds++;
+                    Assert.IsTrue(director.IsIntroPhase, $"round {i}: Game Show's Intro must outlast the shared 0.6s command beat.");
+                    director.Tick(0.9f);
+                }
+
+                Assert.IsTrue(director.IsDecisionPhase, $"round {i} ({director.CurrentArchetype}) must be in Decision after its own Intro.");
+
+                ProductionSubmitAnswer(director, answerCorrectly: true);
+                director.Tick(0.25f);
+                Assert.IsTrue(director.IsFeedbackPhase, $"round {i}: Lock must hand over to Feedback.");
+
+                director.Tick(0.9f);
+                if (isGameShow)
+                {
+                    Assert.IsTrue(director.IsFeedbackPhase, $"round {i}: Game Show's Feedback must outlast the shared 0.8s.");
+                    director.Tick(2.6f);
+                }
+
+                Assert.IsFalse(director.IsFeedbackPhase, $"round {i}: Feedback must have ended after its own duration.");
+            }
+
+            Assert.Greater(gameShowRounds, 0, "No Game Show round appeared in an 8-microgame session.");
+        }
+
+        /// <summary>C8.1l user-test pacing: the shipped definition gives
+        /// Detective and Game Show a 4.2s decision window (+1.0s over the
+        /// shared 3.2s Western keeps) and +1.0s of explanation hold each
+        /// (Detective 4.2s, Game Show 4.4s Feedback). Game Show's 1.5s
+        /// opening and every Western/Balance value are unchanged.</summary>
+        [Test]
+        public void ProductionDefinition_DetectiveAndGameShowPacing_OtherArchetypesUnchanged()
+        {
+            var definition = UnityEngine.Resources.Load<ClasicoGameDefinition>("ClasicoGameDefinition");
+            Assert.IsNotNull(definition, "Production ClasicoGameDefinition must load from Resources.");
+
+            Assert.AreEqual(4.2f, definition.DetectiveDecisionWindowSeconds, 0.001f);
+            Assert.AreEqual(4.2f, definition.GameShowDecisionWindowSeconds, 0.001f);
+            Assert.AreEqual(4.2f, definition.DetectiveFeedbackDisplaySeconds, 0.001f);
+            Assert.AreEqual(4.4f, definition.GameShowFeedbackDisplaySeconds, 0.001f);
+            Assert.AreEqual(1.5f, definition.GameShowIntroSeconds, 0.001f, "Game Show's opening must not be stretched.");
+
+            Assert.AreEqual(3.2f, definition.DecisionWindowSeconds, 0.001f, "Western's (shared) decision window must be unchanged.");
+            Assert.AreEqual(7f, definition.BalanceDecisionWindowSeconds, 0.001f, "Balance's decision window must be unchanged.");
+            Assert.AreEqual(4.5f, definition.BalanceFeedbackDisplaySeconds, 0.001f, "Balance's feedback must be unchanged.");
+            Assert.AreEqual(6.9f, definition.EncounterIntroSeconds, 0.001f, "Western's encounter intro must be unchanged.");
+        }
+
+        /// <summary>C8.1l: the director actually uses the per-archetype
+        /// windows — an unanswered Detective/Game Show round stays in
+        /// Decision past the shared 3.2s and times out after 4.2s, while
+        /// Western times out at 3.2s and Balance keeps its own window.</summary>
+        [Test]
+        public void DetectiveAndGameShow_DecisionWindowsAreTheirOwn_WesternAndBalanceUnchanged()
+        {
+            var definition = ClasicoGameDefinition.CreateInMemory(
+                "clasico_test", "Clasico Test", 8, decisionWindowSeconds: 3.2f, balanceDecisionWindowSeconds: 7f,
+                feedbackDisplaySeconds: 0.1f, detectiveDecisionWindowSeconds: 4.2f, gameShowDecisionWindowSeconds: 4.2f);
+
+            var director = new ClasicoSessionDirector();
+            director.Begin(new GameContext(NullGameAnalyticsSink.Instance, new Random(0)), definition, new GameSession(definition.GameId));
+
+            var seen = new HashSet<MicrogameArchetype>();
+            for (var i = 0; i < definition.MicrogameCount && !director.IsFinished; i++)
+            {
+                var archetype = director.CurrentArchetype;
+                seen.Add(archetype);
+
+                director.Tick(0.001f); // Intro -> Decision
+                Assert.IsTrue(director.IsDecisionPhase, $"round {i} ({archetype}) must reach Decision.");
+
+                director.Tick(3.3f);
+                switch (archetype)
+                {
+                    case MicrogameArchetype.AimSelect:
+                        Assert.IsFalse(director.IsDecisionPhase, "Western must still time out at the shared 3.2s.");
+                        break;
+                    case MicrogameArchetype.Balance:
+                        Assert.IsTrue(director.IsDecisionPhase, "Balance keeps its own longer window.");
+                        director.Tick(3.8f);
+                        break;
+                    default:
+                        Assert.IsTrue(director.IsDecisionPhase, $"{archetype} must still be open past the old 3.2s window.");
+                        director.Tick(1.0f);
+                        Assert.IsFalse(director.IsDecisionPhase, $"{archetype} must time out after its 4.2s window.");
+                        break;
+                }
+
+                director.Tick(0.001f); // Lock -> Feedback
+                director.Tick(0.2f);   // Feedback -> next Intro
+            }
+
+            Assert.IsTrue(seen.Contains(MicrogameArchetype.ChooseSide) && seen.Contains(MicrogameArchetype.DetectError),
+                "The session must include both Game Show and Detective rounds.");
         }
 
         private static void ProductionSubmitAnswer(ClasicoSessionDirector director, bool answerCorrectly)
@@ -574,29 +789,133 @@ namespace Hermit.Tests.EditMode
 
                 case MicrogameArchetype.Balance:
                 {
-                    var challenge = director.CurrentEquation;
-                    if (answerCorrectly)
-                    {
-                        var steps = (int)Math.Round((challenge.CorrectValue - challenge.StartValue) / challenge.StepSize);
-                        var direction = Math.Sign(steps);
-                        for (var i = 0; i < Math.Abs(steps); i++)
-                        {
-                            director.NudgeBalance(direction);
-                        }
-                    }
-
-                    director.ConfirmBalance();
+                    SubmitDebitCreditAnswer(director, answerCorrectly);
                     break;
                 }
 
                 default:
                 {
                     var challenge = director.CurrentErrorDetection;
-                    var chosen = answerCorrectly ? challenge.AnomalyIndex : (challenge.AnomalyIndex + 1) % challenge.Items.Length;
+                    var displayAnomalyIndex = director.CurrentErrorDetectionDisplayAnomalyIndex;
+                    var chosen = answerCorrectly ? displayAnomalyIndex : (displayAnomalyIndex + 1) % challenge.Items.Length;
                     director.SubmitSelection(chosen);
                     break;
                 }
             }
+        }
+
+        // --- C8.1g.2: Detective's runtime display-shuffle contract (brief
+        // sections 4/5/19) — eliminates the C8.1g.1 audit's "anomaly always
+        // at the same slot" position-cheat. BuildSequence guarantees every
+        // archetype appears at least twice for a count >= 8, so
+        // microgameCount: 8 always surfaces at least 2 DetectError rounds
+        // per session below.
+
+        [Test]
+        public void ErrorDetection_DisplayOrderIsAPermutation_AndNeverMutatesTheSourcePool()
+        {
+            var poolSnapshot = ClasicoMicrogameLibrary.ErrorDetectionPool
+                .ToDictionary(c => c.Id, c => (string[])c.Items.Clone());
+
+            for (var seed = 0; seed < 15; seed++)
+            {
+                var (director, _) = BeginDirector(microgameCount: 8, seed: seed);
+
+                for (var i = 0; i < 8 && !director.IsFinished; i++)
+                {
+                    if (director.CurrentArchetype == MicrogameArchetype.DetectError)
+                    {
+                        var challenge = director.CurrentErrorDetection;
+                        var displayOrder = director.CurrentErrorDetectionDisplayOrder;
+
+                        Assert.AreEqual(challenge.Items.Length, displayOrder.Count,
+                            $"seed={seed}: display order length must match Items length.");
+                        CollectionAssert.AreEquivalent(
+                            Enumerable.Range(0, challenge.Items.Length), displayOrder,
+                            $"seed={seed}: display order must be a permutation of [0..Items.Length) — no duplicates, no gaps.");
+
+                        // The source pool's own array must never be mutated
+                        // in place by the shuffle — every round must still
+                        // find the exact original authored content.
+                        CollectionAssert.AreEqual(poolSnapshot[challenge.Id], challenge.Items,
+                            $"seed={seed}: '{challenge.Id}' Items array was mutated — the display shuffle must never touch the source challenge.");
+                    }
+
+                    ResolveCurrent(director, answerCorrectly: true);
+                }
+            }
+        }
+
+        [Test]
+        public void ErrorDetection_DisplayAnomalyIndex_AlwaysMapsBackToTheAuthoredAnomaly()
+        {
+            for (var seed = 0; seed < 15; seed++)
+            {
+                var (director, _) = BeginDirector(microgameCount: 8, seed: seed);
+
+                for (var i = 0; i < 8 && !director.IsFinished; i++)
+                {
+                    if (director.CurrentArchetype == MicrogameArchetype.DetectError)
+                    {
+                        var challenge = director.CurrentErrorDetection;
+                        var displayOrder = director.CurrentErrorDetectionDisplayOrder;
+                        var displayAnomalyIndex = director.CurrentErrorDetectionDisplayAnomalyIndex;
+
+                        Assert.AreEqual(challenge.AnomalyIndex, displayOrder[displayAnomalyIndex],
+                            $"seed={seed}: the item actually rendered at the reported display-anomaly slot must be the authored anomaly.");
+                    }
+
+                    ResolveCurrent(director, answerCorrectly: true);
+                }
+            }
+        }
+
+        [Test]
+        public void ErrorDetection_SeededRun_ProducesIdenticalDisplayOrderEveryTime()
+        {
+            const int seed = 4242;
+            var (directorA, _) = BeginDirector(microgameCount: 8, seed: seed);
+            var (directorB, _) = BeginDirector(microgameCount: 8, seed: seed);
+
+            for (var i = 0; i < 8 && !directorA.IsFinished; i++)
+            {
+                Assert.AreEqual(directorA.CurrentArchetype, directorB.CurrentArchetype, $"round {i}: archetype must match under the same seed.");
+
+                if (directorA.CurrentArchetype == MicrogameArchetype.DetectError)
+                {
+                    Assert.AreEqual(directorA.CurrentErrorDetection.Id, directorB.CurrentErrorDetection.Id, $"round {i}: same seed must draw the same challenge.");
+                    CollectionAssert.AreEqual(directorA.CurrentErrorDetectionDisplayOrder, directorB.CurrentErrorDetectionDisplayOrder,
+                        $"round {i}: same seed must produce the exact same display order.");
+                    Assert.AreEqual(directorA.CurrentErrorDetectionDisplayAnomalyIndex, directorB.CurrentErrorDetectionDisplayAnomalyIndex, $"round {i}: same seed must produce the same display anomaly slot.");
+                }
+
+                ResolveCurrent(directorA, answerCorrectly: true);
+                ResolveCurrent(directorB, answerCorrectly: true);
+            }
+        }
+
+        [Test]
+        public void ErrorDetection_DisplayAnomalyIndex_CanLandInEveryDisplaySlotAcrossSeeds()
+        {
+            var seenSlots = new HashSet<int>();
+
+            for (var seed = 0; seed < 40; seed++)
+            {
+                var (director, _) = BeginDirector(microgameCount: 8, seed: seed);
+
+                for (var i = 0; i < 8 && !director.IsFinished; i++)
+                {
+                    if (director.CurrentArchetype == MicrogameArchetype.DetectError)
+                    {
+                        seenSlots.Add(director.CurrentErrorDetectionDisplayAnomalyIndex);
+                    }
+
+                    ResolveCurrent(director, answerCorrectly: true);
+                }
+            }
+
+            CollectionAssert.AreEquivalent(new[] { 0, 1, 2, 3 }, seenSlots,
+                $"Across 40 seeds the anomaly only ever landed in slots [{string.Join(",", seenSlots)}] — the C8.1g.1 audit's 'always slot 3' position-cheat may still be present.");
         }
     }
 }

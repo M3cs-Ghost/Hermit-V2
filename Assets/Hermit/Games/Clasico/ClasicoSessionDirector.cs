@@ -56,10 +56,13 @@ namespace Hermit.Games.Clasico
         private int _trueFalseCursor;
         private int _equationCursor;
         private int _errorDetectionCursor;
+        private int _debitCreditCursor;
         private IReadOnlyList<ClassificationChallenge> _classificationPool;
         private IReadOnlyList<TrueFalseChallenge> _trueFalsePool;
         private IReadOnlyList<EquationChallenge> _equationPool;
         private IReadOnlyList<ErrorDetectionChallenge> _errorDetectionPool;
+        private int[] _errorDetectionDisplayOrder;
+        private IReadOnlyList<DebitCreditChallenge> _debitCreditPool;
 
         private int _lastStreakBonus;
 
@@ -69,6 +72,30 @@ namespace Hermit.Games.Clasico
         public TrueFalseChallenge CurrentTrueFalse { get; private set; }
         public EquationChallenge CurrentEquation { get; private set; }
         public ErrorDetectionChallenge CurrentErrorDetection { get; private set; }
+
+        /// <summary>C8.1g.2 brief section 4/5: element i is which SOURCE
+        /// index of <see cref="CurrentErrorDetection"/>'s own
+        /// <c>Items</c> array should render in on-screen slot i this round —
+        /// a fresh permutation drawn from the session's own seeded
+        /// <see cref="GameContext.Rng"/> every time a new ErrorDetection
+        /// round is drawn (see <see cref="BuildShuffledIndices"/>), never
+        /// mutating the source array. Null outside a DetectError round.</summary>
+        public IReadOnlyList<int> CurrentErrorDetectionDisplayOrder => _errorDetectionDisplayOrder;
+
+        /// <summary>Which on-screen slot (0..Items.Length-1) is the anomaly
+        /// this round, AFTER the display shuffle above — this, not
+        /// <see cref="ErrorDetectionChallenge.AnomalyIndex"/>, is what the
+        /// underlying <see cref="SelectionMicrogameEngine"/> is actually
+        /// constructed with, and what <c>DetectiveLineupPresenter</c> must
+        /// use to know which suspect is correct. -1 outside a DetectError
+        /// round.</summary>
+        public int CurrentErrorDetectionDisplayAnomalyIndex { get; private set; } = -1;
+
+        /// <summary>C8.1f — Balance's shipped content; see
+        /// Docs/C8_1F_BALANCE_MECHANIC_REDESIGN.md. <see cref="CurrentEquation"/>
+        /// stays null for every Balance round now (the old mechanic is
+        /// retired, not deleted).</summary>
+        public DebitCreditChallenge CurrentDebitCredit { get; private set; }
 
         public int CurrentMicrogameIndex => _index;
         public int TotalMicrogames => _sequence?.Length ?? 0;
@@ -106,9 +133,20 @@ namespace Hermit.Games.Clasico
         public int LastPointsAwarded { get; private set; }
         public int LastStreakBonus => _lastStreakBonus;
 
-        /// <summary>Live value while a Balance microgame's Decision phase is
-        /// active — 0 for every other archetype.</summary>
+        /// <summary>C8.1f — retired alongside the old nudge/confirm Balance
+        /// mechanic. Always 0 now (no round ever constructs a
+        /// <see cref="BalanceMicrogameEngine"/> any more) — kept rather than
+        /// removed since nothing requires deleting it and a future variant
+        /// could still want the old engine.</summary>
         public float CurrentBalanceValue => (_activeEngine as BalanceMicrogameEngine)?.CurrentValue ?? 0f;
+
+        /// <summary>Which machine reaction the presenter should play for the
+        /// Balance round just resolved — see Docs/C8_1F_BALANCE_MECHANIC_REDESIGN.md,
+        /// section 10. Meaningless (default <see cref="DebitCreditOutcome.Correct"/>)
+        /// for every other archetype.</summary>
+        public DebitCreditOutcome LastDebitCreditOutcome { get; private set; }
+        public int LastSelectedDebitIndex { get; private set; } = -1;
+        public int LastSelectedCreditIndex { get; private set; } = -1;
 
         public void Begin(GameContext context, GameDefinition definition, GameSession session)
         {
@@ -120,6 +158,7 @@ namespace Hermit.Games.Clasico
             _trueFalsePool = Shuffled(ClasicoMicrogameLibrary.TrueFalsePool, context.Rng);
             _equationPool = Shuffled(ClasicoMicrogameLibrary.EquationPool, context.Rng);
             _errorDetectionPool = Shuffled(ClasicoMicrogameLibrary.ErrorDetectionPool, context.Rng);
+            _debitCreditPool = Shuffled(ClasicoMicrogameLibrary.DebitCreditPool, context.Rng);
 
             var westernRounds = _definition.WesternEncounterRoundCount;
             if (westernRounds >= 2 && _definition.MicrogameCount >= westernRounds)
@@ -230,6 +269,10 @@ namespace Hermit.Games.Clasico
             ResolveCurrentMicrogame();
         }
 
+        /// <summary>C8.1f: retired from the active Balance runtime — no
+        /// round ever builds a <see cref="BalanceMicrogameEngine"/> any
+        /// more, so this is permanently a no-op. Kept rather than removed;
+        /// see Docs/C8_1F_BALANCE_MECHANIC_REDESIGN.md, "Old mechanic retirement".</summary>
         public void NudgeBalance(int direction)
         {
             if (_phase != Phase.Decision || !(_activeEngine is BalanceMicrogameEngine balance))
@@ -240,6 +283,8 @@ namespace Hermit.Games.Clasico
             balance.Nudge(direction);
         }
 
+        /// <summary>C8.1f: retired from the active Balance runtime — see
+        /// <see cref="NudgeBalance"/>.</summary>
         public void ConfirmBalance()
         {
             if (_phase != Phase.Decision || !(_activeEngine is BalanceMicrogameEngine balance))
@@ -248,6 +293,32 @@ namespace Hermit.Games.Clasico
             }
 
             balance.Confirm();
+            ResolveCurrentMicrogame();
+        }
+
+        /// <summary>Called by the presenter host on each account pick for
+        /// the new C8.1f Balance mechanic — one call per step. Which step
+        /// (debit or credit) the index applies to is the engine's own
+        /// <see cref="DebitCreditMicrogameEngine.CurrentStep"/>, not
+        /// something the caller tracks — mirrors how <see cref="SubmitSelection"/>
+        /// needs no step concept for the other three archetypes. Only the
+        /// second call (credit) can ever resolve the microgame — the first
+        /// (debit) locks and returns, exactly the "no machine reaction until
+        /// both commit" rule.</summary>
+        public void SubmitBalanceAccount(int index)
+        {
+            if (_phase != Phase.Decision || !(_activeEngine is DebitCreditMicrogameEngine debitCredit))
+            {
+                return;
+            }
+
+            if (debitCredit.CurrentStep == DebitCreditStep.Debit)
+            {
+                debitCredit.SubmitDebit(index);
+                return;
+            }
+
+            debitCredit.SubmitCredit(index);
             ResolveCurrentMicrogame();
         }
 
@@ -275,6 +346,9 @@ namespace Hermit.Games.Clasico
             CurrentTrueFalse = null;
             CurrentEquation = null;
             CurrentErrorDetection = null;
+            _errorDetectionDisplayOrder = null;
+            CurrentErrorDetectionDisplayAnomalyIndex = -1;
+            CurrentDebitCredit = null;
             _sequence = null;
         }
 
@@ -289,6 +363,12 @@ namespace Hermit.Games.Clasico
             else if (_activeEngine is BalanceMicrogameEngine balance)
             {
                 LastBalanceValue = balance.CurrentValue;
+            }
+            else if (_activeEngine is DebitCreditMicrogameEngine debitCredit)
+            {
+                LastDebitCreditOutcome = debitCredit.Outcome;
+                LastSelectedDebitIndex = debitCredit.SelectedDebitIndex;
+                LastSelectedCreditIndex = debitCredit.SelectedCreditIndex;
             }
 
             var decisionWindow = GetDecisionWindowSeconds(CurrentArchetype, _currentRoundWithinEncounter);
@@ -332,6 +412,9 @@ namespace Hermit.Games.Clasico
                 CurrentTrueFalse = null;
                 CurrentEquation = null;
                 CurrentErrorDetection = null;
+                _errorDetectionDisplayOrder = null;
+                CurrentErrorDetectionDisplayAnomalyIndex = -1;
+                CurrentDebitCredit = null;
                 return;
             }
 
@@ -342,8 +425,13 @@ namespace Hermit.Games.Clasico
             CurrentTrueFalse = null;
             CurrentEquation = null;
             CurrentErrorDetection = null;
+            _errorDetectionDisplayOrder = null;
+            CurrentErrorDetectionDisplayAnomalyIndex = -1;
+            CurrentDebitCredit = null;
             LastSelectedIndex = -1;
             LastBalanceValue = 0f;
+            LastSelectedDebitIndex = -1;
+            LastSelectedCreditIndex = -1;
 
             switch (CurrentArchetype)
             {
@@ -355,17 +443,29 @@ namespace Hermit.Games.Clasico
 
                 case MicrogameArchetype.ChooseSide:
                     CurrentTrueFalse = DrawNext(_trueFalsePool, ref _trueFalseCursor);
-                    _activeEngine = new SelectionMicrogameEngine(CurrentTrueFalse.IsTrue ? 0 : 1, _definition.DecisionWindowSeconds);
+                    _activeEngine = new SelectionMicrogameEngine(CurrentTrueFalse.IsTrue ? 0 : 1, GetDecisionWindowSeconds(CurrentArchetype, _currentRoundWithinEncounter));
                     break;
 
                 case MicrogameArchetype.Balance:
-                    CurrentEquation = DrawNext(_equationPool, ref _equationCursor);
-                    _activeEngine = new BalanceMicrogameEngine(CurrentEquation.StartValue, CurrentEquation.CorrectValue, CurrentEquation.StepSize, _definition.BalanceDecisionWindowSeconds);
+                    CurrentDebitCredit = DrawNext(_debitCreditPool, ref _debitCreditCursor);
+                    var correctDebitIndex = Array.IndexOf(CurrentDebitCredit.AccountOptions, CurrentDebitCredit.CorrectDebitAccount);
+                    var correctCreditIndex = Array.IndexOf(CurrentDebitCredit.AccountOptions, CurrentDebitCredit.CorrectCreditAccount);
+                    _activeEngine = new DebitCreditMicrogameEngine(correctDebitIndex, correctCreditIndex, _definition.BalanceDecisionWindowSeconds);
                     break;
 
                 default: // DetectError
                     CurrentErrorDetection = DrawNext(_errorDetectionPool, ref _errorDetectionCursor);
-                    _activeEngine = new SelectionMicrogameEngine(CurrentErrorDetection.AnomalyIndex, _definition.DecisionWindowSeconds);
+                    // C8.1g.2 brief section 4/5: the anomaly's on-screen
+                    // slot must never be predictable from content alone —
+                    // this is the fix for the C8.1g.1 audit's "anomaly is
+                    // always the 4th suspect" finding. Drawn fresh every
+                    // round from context.Rng (deterministic under a seeded
+                    // GameContext, real-random in real play, exactly like
+                    // every other shuffle this director already does), and
+                    // never mutates CurrentErrorDetection.Items itself.
+                    _errorDetectionDisplayOrder = BuildShuffledIndices(CurrentErrorDetection.Items.Length, _context.Rng);
+                    CurrentErrorDetectionDisplayAnomalyIndex = Array.IndexOf(_errorDetectionDisplayOrder, CurrentErrorDetection.AnomalyIndex);
+                    _activeEngine = new SelectionMicrogameEngine(CurrentErrorDetectionDisplayAnomalyIndex, GetDecisionWindowSeconds(CurrentArchetype, _currentRoundWithinEncounter));
                     break;
             }
 
@@ -384,8 +484,22 @@ namespace Hermit.Games.Clasico
         /// guessing at numbers. The parameter's presence is the hook itself —
         /// wiring escalation in later is a one-line change here, not a new
         /// call site.</summary>
-        private float GetDecisionWindowSeconds(MicrogameArchetype archetype, int roundWithinEncounter) =>
-            archetype == MicrogameArchetype.Balance ? _definition.BalanceDecisionWindowSeconds : _definition.DecisionWindowSeconds;
+        private float GetDecisionWindowSeconds(MicrogameArchetype archetype, int roundWithinEncounter)
+        {
+            switch (archetype)
+            {
+                case MicrogameArchetype.Balance:
+                    return _definition.BalanceDecisionWindowSeconds;
+                // C8.1l user-test pacing: Detective and Game Show each own a
+                // longer window; Western stays on the shared one.
+                case MicrogameArchetype.DetectError:
+                    return _definition.DetectiveDecisionWindowSeconds;
+                case MicrogameArchetype.ChooseSide:
+                    return _definition.GameShowDecisionWindowSeconds;
+                default:
+                    return _definition.DecisionWindowSeconds;
+            }
+        }
 
         /// <summary>Which archetypes currently own the Encounter treatment
         /// (a themed intro once, a quick reset between rounds, an extended
@@ -403,7 +517,11 @@ namespace Hermit.Games.Clasico
         {
             if (!UsesEncounterPresentation(CurrentArchetype))
             {
-                return _definition.CommandBeatSeconds;
+                // C8.1k: Game Show's broadcast preamble (lights -> prize ->
+                // statement entrance) owns its own, longer Intro.
+                return CurrentArchetype == MicrogameArchetype.ChooseSide
+                    ? _definition.GameShowIntroSeconds
+                    : _definition.CommandBeatSeconds;
             }
 
             return _currentRoundWithinEncounter == 0 ? _definition.EncounterIntroSeconds : _definition.RoundTransitionSeconds;
@@ -413,6 +531,32 @@ namespace Hermit.Games.Clasico
         {
             if (!UsesEncounterPresentation(CurrentArchetype))
             {
+                // C8.1f.2: Balance's machine-reaction animation plus a
+                // genuinely readable teaching recap needs more than the
+                // shared generic-ding Feedback length every other
+                // non-Encounter archetype uses. C8.1g.2: Detective's new
+                // investigative reveal + teaching recap (brief section 10)
+                // needs the same kind of allowance — the shared 0.8s
+                // generic-ding window used to be plenty when Feedback was
+                // just a red/green flash, but a real explanation sentence
+                // ("Cuentas por pagar es un pasivo...") cannot be read in
+                // 0.8s.
+                if (CurrentArchetype == MicrogameArchetype.Balance)
+                {
+                    return _definition.BalanceFeedbackDisplaySeconds;
+                }
+
+                if (CurrentArchetype == MicrogameArchetype.DetectError)
+                {
+                    return _definition.DetectiveFeedbackDisplaySeconds;
+                }
+
+                // C8.1k: answer-lock suspense + reveal + explanation hold.
+                if (CurrentArchetype == MicrogameArchetype.ChooseSide)
+                {
+                    return _definition.GameShowFeedbackDisplaySeconds;
+                }
+
                 return _definition.FeedbackDisplaySeconds;
             }
 
@@ -495,7 +639,7 @@ namespace Hermit.Games.Clasico
             {
                 case MicrogameArchetype.AimSelect: return CurrentClassification?.Id ?? string.Empty;
                 case MicrogameArchetype.ChooseSide: return CurrentTrueFalse?.Id ?? string.Empty;
-                case MicrogameArchetype.Balance: return CurrentEquation?.Id ?? string.Empty;
+                case MicrogameArchetype.Balance: return CurrentDebitCredit?.Id ?? string.Empty;
                 default: return CurrentErrorDetection?.Id ?? string.Empty;
             }
         }
@@ -506,7 +650,7 @@ namespace Hermit.Games.Clasico
             {
                 case MicrogameArchetype.AimSelect: return CurrentClassification?.ContentVersion ?? 0;
                 case MicrogameArchetype.ChooseSide: return CurrentTrueFalse?.ContentVersion ?? 0;
-                case MicrogameArchetype.Balance: return CurrentEquation?.ContentVersion ?? 0;
+                case MicrogameArchetype.Balance: return CurrentDebitCredit?.ContentVersion ?? 0;
                 default: return CurrentErrorDetection?.ContentVersion ?? 0;
             }
         }
@@ -528,6 +672,31 @@ namespace Hermit.Games.Clasico
             }
 
             return copy;
+        }
+
+        /// <summary>C8.1g.2: a plain Fisher-Yates permutation of [0..length) —
+        /// the same shuffle algorithm <see cref="Shuffled{T}"/> already uses
+        /// above, just returning the index permutation itself instead of a
+        /// shuffled copy of the source list, since the caller needs to map
+        /// display slot -&gt; source index (and back) rather than a shuffled
+        /// value list. Deterministic for a given <paramref name="rng"/>
+        /// state, so a seeded <see cref="GameContext"/> reproduces the exact
+        /// same display order every time.</summary>
+        private static int[] BuildShuffledIndices(int length, Random rng)
+        {
+            var order = new int[length];
+            for (var i = 0; i < length; i++)
+            {
+                order[i] = i;
+            }
+
+            for (var i = order.Length - 1; i > 0; i--)
+            {
+                var j = rng.Next(i + 1);
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            return order;
         }
     }
 }

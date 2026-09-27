@@ -96,10 +96,10 @@ namespace Hermit.Runtime.GameFramework.Microgames
     /// generic "¡DISPARA!" HUD command banner — which used to stay onscreen
     /// for Western's entire Intro phase, i.e. the whole cinematic — is
     /// replaced for AimSelect specifically by this presenter's own small
-    /// "DISPARA" cue (<see cref="ShowDisparaCue"/>), shown only at the
-    /// actual moment of gameplay reveal (round 1 and every continuation
-    /// round alike) and faded on the player's first shot
-    /// (<see cref="HideDisparaCueOnFire"/>); (2) a real gameplay firearm
+    /// "DISPARA" cue, shown only at the actual moment of gameplay reveal
+    /// and faded on the player's first shot (C8.1p removed that visual cue
+    /// entirely after manual RC review — see <see cref="EnableOutlawInput"/>
+    /// for the future Gold voice hook); (2) a real gameplay firearm
     /// cue (<see cref="_gameplayGunshotClip"/>,
     /// <see cref="ProceduralAudio.GameplayGunshot"/>) now fires on every
     /// shot in <see cref="FireSequenceRoutine"/> — deliberately distinct
@@ -138,27 +138,56 @@ namespace Hermit.Runtime.GameFramework.Microgames
 
         private static readonly char[] OutlawLetters = { 'A', 'B', 'C', 'D' };
 
+        // C8.1j premium typography pass: physical frontier-signage colors —
+        // aged wood plank with a dark burned/charred edge — replacing plain
+        // text floating over the artwork (brief section 3). A warm ivory
+        // (Theme.AccentWarm) label reads as painted/branded lettering on
+        // the wood, not a UI chrome color.
+        private static readonly Color SignWoodFill = new Color(0.36f, 0.24f, 0.15f, 1f);
+        private static readonly Color SignWoodBorder = new Color(0.16f, 0.09f, 0.05f, 1f);
+
         public event Action<int> TargetSelected;
 
         private readonly MonoBehaviour _host;
 
         private RectTransform _root;
         private Text _conceptText;
+
+        // C8.1j.2: the whole ConceptSign group (Gold backing sprite, or the
+        // procedural fallback panel, plus its Concept text) — hidden from
+        // Build, through the round-1 cinematic, and on cancel/Hide; only
+        // ever revealed by RevealOutlawVisuals, the same authoritative
+        // gameplay-visuals phase that establishes the outlaws.
+        private GameObject _conceptSign;
         private RectTransform _reticle;
         private Image _muzzleFlash;
         private readonly MotionHandle _muzzleFlashHandle = new MotionHandle();
 
-        // C8.1d.7 — the refined "DISPARA" action cue: a small, presenter-
-        // owned cue shown only at gameplay reveal (round 1's RevealAfterIntro
-        // and every continuation round's own immediate reveal), replacing
-        // the generic ClasicoHud CommandText banner for Western specifically
-        // — that banner used to be shown for the *entire* Intro phase, which
-        // for Western now means the whole ~7.5s cinematic, exactly the
-        // "competes with the cinematic" complaint this phase fixes. See
-        // "ShowDisparaCue"/"HideDisparaCue" and
-        // Docs/C8_1D_GOLD_ART_INTEGRATION.md, "C8.1d.7".
-        private Text _disparaText;
-        private Coroutine _disparaRoutine;
+        // C8.1d.10: nearly every other coroutine this presenter starts (the
+        // whole cinematic chain, the fire sequence, the countershot, the
+        // per-target entrance settle) is a bare fire-and-forget
+        // <c>_host.StartCoroutine(...)</c> whose return value is discarded —
+        // there is no reference to <c>StopCoroutine</c>. <see cref="_host"/> (<c>ClasicoHud</c>)
+        // outlives this presenter's own <see cref="_root"/> being
+        // deactivated, so a bare <c>_root.gameObject.SetActive(false)</c>
+        // never stopped any of them — they kept running to completion on
+        // schedule, including their own <c>PlayOneShot</c> calls, which is
+        // exactly how a dust-FX/cinematic-gunshot could still fire after
+        // SALIR. Every one of those coroutines now captures this generation
+        // counter at its own start and bails out (<c>yield break</c>) the
+        // instant it no longer matches — bumped once, centrally, by
+        // CancelActiveWesternSequence.
+        private int _sequenceGeneration;
+
+        // C8.1d.12: true once <see cref="RevealOutlawVisuals"/> has already
+        // run for the round currently in progress — set from inside
+        // <see cref="CinematicIntroRoutine"/> itself (overlapping the outlaw
+        // entrance with the cinematic's own flash/cut teardown, rather than
+        // waiting for the director's separate, later Intro-&gt;Decision gate)
+        // so <see cref="RevealAfterIntro"/> knows not to re-trigger the
+        // settle-in animation a second time. Reset per round in
+        // <see cref="ShowChallenge"/>.
+        private bool _outlawVisualsRevealedForCurrentRound;
 
         // C8.1d.3: the off-screen shooter rig — the shot's visible origin
         // once Sheriff himself is no longer part of the gameplay
@@ -305,23 +334,74 @@ namespace Hermit.Runtime.GameFramework.Microgames
             BuildTumbleweed(_root);
             BuildCinematicAudio();
 
-            _conceptText = RuntimeUIFactory.CreateText(
-                _root, "Concept", string.Empty, Theme.HeadingSize, TextAnchor.MiddleCenter, Theme.TextPrimary,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -70), new Vector2(900, 80));
+            // C8.1j.1: the approved Gold Midjourney sign art (chroma-key
+            // extracted from ArtBible/Candidates/Worlds/Western/UI/ — see
+            // Docs/C8_1J1_WESTERN_SIGNAGE_ART.md) replaces C8.1j's
+            // procedural wood-plank panel. Sized to the sprite's own real
+            // 1904:640 aspect ratio (434x146.0 here — preserveAspect keeps
+            // it exact regardless), scaled up from a naive "same box as
+            // before" fit specifically because the real sprite's own
+            // decorative rope border/brass corners eat far more of its
+            // frame than the procedural panel's thin border did — a
+            // smaller box would leave too little genuine interior wood for
+            // text. Falls back to the C8.1j procedural panel if the art is
+            // ever missing (LoadArt's own established "never crash, never
+            // silently omit" contract).
+            var conceptSignSprite = RuntimeUIFactory.LoadArt("Art/Gold/Western/UI/Western_ConceptSign");
+            RectTransform conceptTextParent;
+            if (conceptSignSprite != null)
+            {
+                const float conceptSignWidth = 434f;
+                const float conceptSignHeight = conceptSignWidth * (640f / 1904f);
 
-            // C8.1d.7: sits slightly above Concept (same top-center anchor,
-            // a smaller box, a smaller/subtler font size than the concept
-            // heading) — "near upper-center but below the top HUD, or
-            // slightly above the concept/question area" per the brief.
-            // Built hidden (alpha 0, inactive) — only ever shown by
-            // ShowDisparaCue at the exact moment gameplay input becomes
-            // available, never during the cinematic.
-            _disparaText = RuntimeUIFactory.CreateText(
-                _root, "DisparaCue", string.Empty, Theme.BodySize, TextAnchor.MiddleCenter, Theme.Accent,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(300, 32));
-            _disparaText.color = new Color(Theme.Accent.r, Theme.Accent.g, Theme.Accent.b, 0f);
-            _disparaText.fontStyle = FontStyle.Bold;
-            _disparaText.gameObject.SetActive(false);
+                var signGo = new GameObject("ConceptSign", typeof(RectTransform), typeof(Image));
+                var signRect = (RectTransform)signGo.transform;
+                signRect.SetParent(_root, false);
+                signRect.anchorMin = signRect.anchorMax = new Vector2(0.5f, 1f);
+                signRect.anchoredPosition = new Vector2(0, -81);
+                signRect.sizeDelta = new Vector2(conceptSignWidth, conceptSignHeight);
+
+                var signImage = signGo.GetComponent<Image>();
+                signImage.sprite = conceptSignSprite;
+                signImage.type = Image.Type.Simple;
+                signImage.preserveAspect = true;
+                signImage.raycastTarget = false;
+                _conceptSign = signGo;
+
+                // TRUE usable interior — excludes the sprite's own rope
+                // border/brass corner hardware, measured directly from the
+                // source art (see Docs/C8_1J1_WESTERN_SIGNAGE_ART.md,
+                // "Concept sign interior measurement"). Text may occupy
+                // this zone only, never the decorative frame.
+                var interiorGo = new GameObject("ConceptSignInterior", typeof(RectTransform));
+                conceptTextParent = (RectTransform)interiorGo.transform;
+                conceptTextParent.SetParent(signRect, false);
+                conceptTextParent.anchorMin = new Vector2(0.13f, 0.27f);
+                conceptTextParent.anchorMax = new Vector2(0.87f, 0.71f);
+                conceptTextParent.offsetMin = Vector2.zero;
+                conceptTextParent.offsetMax = Vector2.zero;
+            }
+            else
+            {
+                var (conceptSignBorder, conceptSignContent) = RuntimeUIFactory.CreatePremiumPanel(
+                    _root, "ConceptSign", SignWoodFill, SignWoodBorder, 4f, 10);
+                conceptSignBorder.anchorMin = conceptSignBorder.anchorMax = new Vector2(0.5f, 1f);
+                conceptSignBorder.anchoredPosition = new Vector2(0, -70);
+                conceptSignBorder.sizeDelta = new Vector2(620, 92);
+                conceptSignBorder.GetComponent<Image>().raycastTarget = false;
+                conceptSignContent.GetComponent<Image>().raycastTarget = false;
+                conceptTextParent = conceptSignContent;
+                _conceptSign = conceptSignBorder.gameObject;
+            }
+
+            _conceptText = RuntimeUIFactory.CreateText(
+                conceptTextParent, "Concept", string.Empty, Theme.HeadingSize, TextAnchor.MiddleCenter, Theme.AccentWarm,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            _conceptText.resizeTextForBestFit = true;
+            _conceptText.resizeTextMinSize = 16;
+            _conceptText.resizeTextMaxSize = Theme.HeadingSize;
+            _conceptText.fontStyle = FontStyle.Bold;
+            _conceptSign.SetActive(false);
 
             // C8.1d.1: substantially larger than the C8.1d production pass
             // (190x220) — the outlaws were reported too small/pixelated (see
@@ -441,13 +521,88 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 dust.sizeDelta = new Vector2(56, 56);
                 dust.SetAsLastSibling();
 
+                // C8.1j.1: the approved Gold nameplate art replaces C8.1j's
+                // procedural wood-plate. Width capped at 250 (not
+                // targetWidth+6=246... close, kept at 250 for a touch more
+                // interior room) — outlaws are centered targetWidth+spacing
+                // = 254 apart, so every plate stays clear of its neighbors
+                // with a small margin either side. Vertical position tuned
+                // (not simply centered in the old 40px gap) so the taller
+                // real sprite (84px, vs. the old procedural plate's 40px)
+                // clears BOTH the character card's own bottom edge above it
+                // AND ClasicoHud's shared bottom-center Feedback banner
+                // below it (y 10-50 in this same coordinate space) — the
+                // two middle outlaws sit within that banner's horizontal
+                // span, so vertical clearance there is a real collision
+                // risk, not just a cosmetic one. Same graceful
+                // LoadArt-null fallback pattern as the concept sign.
+                var namePlateSprite = RuntimeUIFactory.LoadArt("Art/Gold/Western/UI/Western_OutlawNameplate");
+                RectTransform namePlateTextParent;
+                if (namePlateSprite != null)
+                {
+                    const float namePlateWidth = 250f;
+                    const float namePlateHeight = namePlateWidth * (640f / 1904f);
+
+                    var plateGo = new GameObject("NamePlate", typeof(RectTransform), typeof(Image));
+                    var plateRect = (RectTransform)plateGo.transform;
+                    plateRect.SetParent(button.transform, false);
+                    plateRect.anchorMin = plateRect.anchorMax = new Vector2(0.5f, 0f);
+                    plateRect.anchoredPosition = new Vector2(0, -43);
+                    plateRect.sizeDelta = new Vector2(namePlateWidth, namePlateHeight);
+
+                    var plateImage = plateGo.GetComponent<Image>();
+                    plateImage.sprite = namePlateSprite;
+                    plateImage.type = Image.Type.Simple;
+                    plateImage.preserveAspect = true;
+                    plateImage.raycastTarget = false;
+                    plateRect.SetAsLastSibling();
+
+                    // TRUE usable interior — excludes the corner brackets
+                    // and top/bottom beams (measured directly from the
+                    // source art; see Docs/C8_1J1_WESTERN_SIGNAGE_ART.md,
+                    // "Nameplate interior measurement").
+                    var plateInteriorGo = new GameObject("NamePlateInterior", typeof(RectTransform));
+                    namePlateTextParent = (RectTransform)plateInteriorGo.transform;
+                    namePlateTextParent.SetParent(plateRect, false);
+                    namePlateTextParent.anchorMin = new Vector2(0.14f, 0.32f);
+                    namePlateTextParent.anchorMax = new Vector2(0.86f, 0.70f);
+                    namePlateTextParent.offsetMin = Vector2.zero;
+                    namePlateTextParent.offsetMax = Vector2.zero;
+                }
+                else
+                {
+                    var namePlateBorder = RuntimeUIFactory.CreateRoundedPanel(button.transform, "NamePlate", SignWoodBorder, 6);
+                    namePlateBorder.anchorMin = namePlateBorder.anchorMax = new Vector2(0.5f, 0f);
+                    namePlateBorder.anchoredPosition = new Vector2(0, -22);
+                    namePlateBorder.sizeDelta = new Vector2(targetWidth + 6, 40);
+                    namePlateBorder.GetComponent<Image>().raycastTarget = false;
+                    namePlateBorder.SetAsLastSibling();
+
+                    var namePlateFillGo = new GameObject("NamePlateFill", typeof(RectTransform), typeof(Image));
+                    var namePlateFill = (RectTransform)namePlateFillGo.transform;
+                    namePlateFill.SetParent(namePlateBorder, false);
+                    namePlateFill.anchorMin = Vector2.zero;
+                    namePlateFill.anchorMax = Vector2.one;
+                    namePlateFill.offsetMin = new Vector2(3, 3);
+                    namePlateFill.offsetMax = new Vector2(-3, -3);
+                    var namePlateFillImage = namePlateFillGo.GetComponent<Image>();
+                    namePlateFillImage.color = SignWoodFill;
+                    namePlateFillImage.raycastTarget = false;
+                    namePlateTextParent = namePlateFill;
+                }
+
                 var label = button.GetComponentInChildren<Text>();
+                label.transform.SetParent(namePlateTextParent, false);
+                label.color = Theme.AccentWarm;
+                label.fontStyle = FontStyle.Bold;
                 label.fontSize = Theme.CaptionSize;
-                label.rectTransform.anchorMin = new Vector2(0.5f, 0f);
-                label.rectTransform.anchorMax = new Vector2(0.5f, 0f);
-                label.rectTransform.anchoredPosition = new Vector2(0, -18);
-                label.rectTransform.sizeDelta = new Vector2(targetWidth, 32);
-                label.rectTransform.SetAsLastSibling();
+                label.resizeTextForBestFit = true;
+                label.resizeTextMinSize = 10;
+                label.resizeTextMaxSize = Theme.CaptionSize;
+                label.rectTransform.anchorMin = Vector2.zero;
+                label.rectTransform.anchorMax = Vector2.one;
+                label.rectTransform.anchoredPosition = Vector2.zero;
+                label.rectTransform.sizeDelta = Vector2.zero;
 
                 _targets.Add(button);
                 _targetLabels.Add(label);
@@ -738,6 +893,7 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// edited, no new rendered file is created.</summary>
         private IEnumerator MusicVolumeRoutine(float duration, float fromVolume, float toVolume)
         {
+            var generation = _sequenceGeneration;
             var elapsed = 0f;
             while (elapsed < duration)
             {
@@ -745,6 +901,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 var t = Mathf.Clamp01(elapsed / duration);
                 _musicAudioSource.volume = Mathf.Lerp(fromVolume, toVolume, t);
                 yield return null;
+
+                if (generation != _sequenceGeneration)
+                {
+                    yield break;
+                }
             }
 
             _musicAudioSource.volume = toVolume;
@@ -758,6 +919,7 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// to.</summary>
         private IEnumerator TumbleweedRoutine(float duration)
         {
+            var generation = _sequenceGeneration;
             const float startX = -700f;
             const float endX = 700f;
             const float baseY = 130f;
@@ -773,6 +935,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 _tumbleweed.anchoredPosition = new Vector2(x, baseY + bounce);
                 _tumbleweed.localRotation = Quaternion.Euler(0f, 0f, t * 720f);
                 yield return null;
+
+                if (generation != _sequenceGeneration)
+                {
+                    yield break;
+                }
             }
 
             _tumbleweed.gameObject.SetActive(false);
@@ -841,6 +1008,10 @@ namespace Hermit.Runtime.GameFramework.Microgames
             _challenge = challenge;
             _root.gameObject.SetActive(true);
 
+            // C8.1d.12: reset each round — see this field's own doc-comment
+            // on <see cref="RevealAfterIntro"/> for what it gates.
+            _outlawVisualsRevealedForCurrentRound = false;
+
             // C8.1d.9: idempotent safety — CountershotRoutine's own flash
             // always clears itself well before a round transitions, but a
             // fresh round should never risk starting with any residual
@@ -875,8 +1046,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 // C8.1d.3/.4: the outlaws stay fully hidden during the intro
                 // (not merely non-interactable, as in C8.1d.2) — the
                 // cinematic's own "no gameplay UI during the montage"
-                // requirement. Activation is deferred to RevealRoundContent,
-                // called from RevealAfterIntro once the intro finishes.
+                // requirement. C8.1d.12: visual activation now happens
+                // earlier, overlapping CinematicIntroRoutine's own flash/cut
+                // teardown (RevealOutlawVisuals) — input itself still only
+                // ever enables at the real Intro->Decision gate
+                // (EnableOutlawInput, via RevealAfterIntro).
                 for (var i = 0; i < _targets.Count; i++)
                 {
                     _targets[i].gameObject.SetActive(false);
@@ -884,14 +1058,22 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 }
 
                 _conceptText.text = string.Empty;
+                _conceptSign.SetActive(false);
                 _reticle.gameObject.SetActive(false);
-                HideDisparaCueImmediately();
 
                 _host.StartCoroutine(CinematicIntroRoutine());
             }
             else
             {
-                RevealRoundContent(challenge, animateOutlawEntrance: false);
+                // C8.1d.12: continuation rounds (2/3) have no cinematic to
+                // overlap with, so both halves still run together, exactly
+                // as the old single RevealRoundContent did — the flag stays
+                // false here, so RevealAfterIntro's own later call correctly
+                // falls through to its "reveal both" branch too (a harmless
+                // idempotent re-application of RevealOutlawVisuals, same as
+                // before this phase).
+                RevealOutlawVisuals(challenge, animateOutlawEntrance: false);
+                EnableOutlawInput();
             }
         }
 
@@ -948,6 +1130,8 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// correctness gate.</summary>
         private IEnumerator CinematicIntroRoutine()
         {
+            var generation = _sequenceGeneration;
+
             _cinematicRoot.gameObject.SetActive(true);
             _cinematicImage.gameObject.SetActive(false);
             _cinematicFlash.color = new Color(1f, 0.95f, 0.85f, 0f);
@@ -958,25 +1142,30 @@ namespace Hermit.Runtime.GameFramework.Microgames
             // 0.00-1.00 — WIDE ESTABLISHING SHOT.
             _host.StartCoroutine(TumbleweedRoutine(0.85f));
             yield return new WaitForSeconds(1.00f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 1.00-2.00 — CUT TO SHERIFF CLOSE-UP.
             SetCinematicShot(_cinematicSheriffCloseup);
             yield return PushInRoutine(1.00f, 1.0f, 1.03f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 2.00-3.00 — CUT TO OUTLAW CLOSE-UP (opposing eyeline/push-in).
             SetCinematicShot(_cinematicOutlawCloseup);
             yield return PushInRoutine(1.00f, 1.0f, 1.04f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 3.00-4.10 — CUT TO SHERIFF HAND/HOLSTER — the longest detail
             // shot; let the hand/revolver tension breathe.
             SetCinematicShot(_cinematicHandCloseup);
             yield return PushInRoutine(1.10f, 1.0f, 1.02f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 4.10-4.90 — CUT BACK TO SHERIFF FACE, tension rising (the
             // music itself carries this now — C8.1d.6 removed the two
             // discrete low-pulse cues that used to land here).
             SetCinematicShot(_cinematicSheriffCloseup);
             yield return PushInRoutine(0.80f, 1.0f, 1.035f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 4.90-5.60 — CUT TO OUTLAW FACE, a short response shot. Duel
             // music begins its gentle attenuation across this exact 0.70s
@@ -984,6 +1173,7 @@ namespace Hermit.Runtime.GameFramework.Microgames
             SetCinematicShot(_cinematicOutlawCloseup);
             _host.StartCoroutine(MusicVolumeRoutine(0.70f, MusicBaseVolume, MusicDuckVolume));
             yield return PushInRoutine(0.70f, 1.0f, 1.02f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 5.60-6.20 — TENSION SILENCE: duel music collapses toward
             // near-silence across this exact 0.60s window; only wind
@@ -992,9 +1182,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
             _host.StartCoroutine(MusicVolumeRoutine(0.60f, MusicDuckVolume, MusicNearSilentVolume));
             _sfxAudioSource.PlayOneShot(_creakClip);
             yield return new WaitForSeconds(0.45f);
+            if (generation != _sequenceGeneration) { yield break; }
             _sfxAudioSource.PlayOneShot(_predrawClip);
             WesternAudioEvents.Record("CinematicPreDraw", _predrawClip);
             yield return new WaitForSeconds(0.15f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 6.20 — GUNSHOT. Duel music is force-stopped here (not just
             // faded) so the transient never shares the mix with any
@@ -1003,7 +1195,29 @@ namespace Hermit.Runtime.GameFramework.Microgames
             _sfxAudioSource.PlayOneShot(_gunshotClip);
             WesternAudioEvents.Record("CinematicGunshot", _gunshotClip);
             _sfxAudioSource.PlayOneShot(_dustAccentClip);
+
+            // C8.1d.12: the outlaws now begin appearing/settling right here,
+            // at the gunshot beat — overlapping their entrance with the
+            // flash/cut teardown below instead of waiting for the
+            // director's separate, later Intro->Decision gate (see
+            // RevealAfterIntro). That gate used to be the ONLY reveal
+            // trigger, and it fires at ClasicoGameDefinition.EncounterIntroSeconds
+            // — a value that included a ~1.0s safety buffer above this
+            // routine's own ~6.5s scripted runtime, so the cinematic would
+            // visually finish (this method's own final SetActive(false)
+            // below) up to a full second before anything else appeared:
+            // an empty Western background with nobody in it. Starting the
+            // settle-in now means by the time the flash/cut finishes
+            // clearing the cinematic framing, the outlaws are already
+            // visible and nearly settled (each takes ~0.2-0.36s, well
+            // inside GunshotFlashRoutine's own 0.30s). Visual only — input
+            // stays gated exactly where it always was, at the real
+            // Intro->Decision transition (see EnableOutlawInput).
+            RevealOutlawVisuals(_challenge, animateOutlawEntrance: true);
+            _outlawVisualsRevealedForCurrentRound = true;
+
             yield return GunshotFlashRoutine();
+            if (generation != _sequenceGeneration) { yield break; }
 
             // 6.20-6.50 — FLASH/CUT TRANSITION: hard cut, cinematic gone.
             _cinematicRoot.gameObject.SetActive(false);
@@ -1081,12 +1295,17 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// begins — the actual, authoritative "GO" of the round, independent
         /// of <see cref="CinematicIntroRoutine"/>'s own cosmetic timing.
         /// Force-hides the cinematic (idempotent safety — it should already
-        /// be hidden by its own final hard cut) and reveals the outlaws/
-        /// concept/labels/reticle/input, with a small staggered settle-in
-        /// for the outlaws on round 1 only. For a continuation round (2/3),
-        /// <see cref="ShowChallenge"/> already revealed everything
-        /// synchronously with no animation, so this call is a harmless
-        /// idempotent re-application, not a second reveal/replay.</summary>
+        /// be hidden by its own final hard cut). C8.1d.12: for round 1, the
+        /// outlaws' own visual entrance (<see cref="RevealOutlawVisuals"/>)
+        /// now already happened earlier, overlapping
+        /// <see cref="CinematicIntroRoutine"/>'s own flash/cut teardown — see
+        /// <see cref="_outlawVisualsRevealedForCurrentRound"/> — so this gate
+        /// only needs to flip on input (<see cref="EnableOutlawInput"/>),
+        /// never re-triggering the settle-in animation a second time. For a
+        /// continuation round (2/3), there is no cinematic to overlap with —
+        /// <see cref="ShowChallenge"/> never marks the flag, so this still
+        /// falls through to the original full reveal (visuals + input
+        /// together, exactly as before C8.1d.12).</summary>
         public void RevealAfterIntro()
         {
             _cinematicRoot.gameObject.SetActive(false);
@@ -1098,23 +1317,39 @@ namespace Hermit.Runtime.GameFramework.Microgames
             // gate ever fires before that routine's own stop does.
             _musicAudioSource.Stop();
 
-            if (_challenge != null)
+            if (_challenge == null)
             {
-                RevealRoundContent(_challenge, animateOutlawEntrance: true);
+                return;
+            }
+
+            if (_outlawVisualsRevealedForCurrentRound)
+            {
+                EnableOutlawInput();
+            }
+            else
+            {
+                RevealOutlawVisuals(_challenge, animateOutlawEntrance: true);
+                EnableOutlawInput();
             }
         }
 
-        /// <summary><paramref name="animateOutlawEntrance"/> is true only for
-        /// round 1 of an Encounter (the outlaws were hidden during the
-        /// intro) — each outlaw gets a small staggered settle-in
-        /// (C8.1d.3 brief section 6), under ~0.35s total across all four,
-        /// never repeated for continuation rounds.</summary>
-        private void RevealRoundContent(ClassificationChallenge challenge, bool animateOutlawEntrance)
+        /// <summary>C8.1d.12: split out of the former single
+        /// <c>RevealRoundContent</c> — the purely visual half (activate,
+        /// label, concept text, the staggered settle-in). Never touches
+        /// interactability, EventSystem selection, or the reticle (see
+        /// <see cref="EnableOutlawInput"/> for those) so it
+        /// can safely run before input should be available — specifically,
+        /// overlapping the tail of <see cref="CinematicIntroRoutine"/>.
+        /// <paramref name="animateOutlawEntrance"/> is true only for round 1
+        /// of an Encounter (the outlaws were hidden during the intro) — each
+        /// outlaw gets a small staggered settle-in (C8.1d.3 brief section
+        /// 6), under ~0.35s total across all four, never repeated for
+        /// continuation rounds.</summary>
+        private void RevealOutlawVisuals(ClassificationChallenge challenge, bool animateOutlawEntrance)
         {
             _conceptText.text = challenge.ConceptLabel;
-            _reticle.gameObject.SetActive(true);
+            _conceptSign.SetActive(true);
 
-            Button first = null;
             for (var i = 0; i < _targets.Count; i++)
             {
                 var hasOption = i < challenge.CategoryOptions.Length;
@@ -1125,123 +1360,69 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 }
 
                 _targetLabels[i].text = challenge.CategoryOptions[i];
-                _targets[i].interactable = true;
-                first ??= _targets[i];
+
+                // C8.1d.12: explicit, not just "leave it alone" — a freshly
+                // created Button defaults to interactable=true, and nothing
+                // ever set it false before the *first* round of a session
+                // reaches this point (only RevealOutcome, at the END of a
+                // round, ever sets it false). That was harmless while
+                // visibility and interactability always flipped on together
+                // in the same call, but this method now runs alone, earlier
+                // — a stale interactable=true would make round 1's outlaws
+                // clickable the instant they become visually active, before
+                // EnableOutlawInput's own real gate. Always force it false
+                // here so only that method can ever turn it back on.
+                _targets[i].interactable = false;
 
                 if (animateOutlawEntrance)
                 {
                     _host.StartCoroutine(OutlawSettleInRoutine(i, i * 0.04f));
                 }
             }
+        }
+
+        /// <summary>C8.1d.12: split out of the former single
+        /// <c>RevealRoundContent</c> — the input-enabling half (reticle,
+        /// interactable, EventSystem selection). Always the
+        /// last thing to happen for a round, at the director's real
+        /// Intro-&gt;Decision gate (<see cref="RevealAfterIntro"/>) — visual
+        /// appearance may now run ahead of this (round 1's outlaws are
+        /// typically already fully settled by the time this fires), but the
+        /// player can never act before this specific call. Assumes
+        /// <see cref="RevealOutlawVisuals"/> already ran for the current
+        /// round (activating/labeling every target) — always true by
+        /// construction, since <see cref="RevealAfterIntro"/> only calls this
+        /// alone after confirming that, and <see cref="ShowChallenge"/>'s
+        /// continuation-round branch calls both together.</summary>
+        private void EnableOutlawInput()
+        {
+            _reticle.gameObject.SetActive(true);
+
+            Button first = null;
+            for (var i = 0; i < _targets.Count; i++)
+            {
+                if (!_targets[i].gameObject.activeSelf)
+                {
+                    continue;
+                }
+
+                _targets[i].interactable = true;
+                first ??= _targets[i];
+            }
 
             RuntimeUIFactory.Select(first);
-            ShowDisparaCue();
-        }
 
-        /// <summary>C8.1d.7: shows the refined "DISPARA" action cue at the
-        /// exact moment gameplay input becomes available — called from
-        /// <see cref="RevealRoundContent"/>, so it fires identically on
-        /// round 1 (via <see cref="RevealAfterIntro"/>, right after the
-        /// cinematic's own hard cut) and on every continuation round (2/3,
-        /// an immediate reveal with no cinematic) per the brief's "may
-        /// reappear at gameplay start" for those rounds. A quick scale/alpha
-        /// punch (0.92/alpha 0 -&gt; 1.04/alpha 1 -&gt; 1.00, ~0.16s — brief
-        /// section 3's suggested numbers), then holds static until
-        /// <see cref="HideDisparaCueOnFire"/> fades it out on the player's
-        /// first shot. Never a continuous pulse.</summary>
-        private void ShowDisparaCue()
-        {
-            _disparaText.text = MicrogameVocabulary.CommandFor(MicrogameArchetype.AimSelect);
-            _disparaText.gameObject.SetActive(true);
-
-            if (_disparaRoutine != null)
-            {
-                _host.StopCoroutine(_disparaRoutine);
-            }
-
-            _disparaRoutine = _host.StartCoroutine(DisparaPunchInRoutine());
-        }
-
-        private IEnumerator DisparaPunchInRoutine()
-        {
-            const float duration = 0.16f;
-            var rect = _disparaText.rectTransform;
-            var baseColor = Theme.Accent;
-
-            var elapsed = 0f;
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                var t = Mathf.Clamp01(elapsed / duration);
-                var scale = t < 0.6f
-                    ? Mathf.Lerp(0.92f, 1.04f, t / 0.6f)
-                    : Mathf.Lerp(1.04f, 1.00f, (t - 0.6f) / 0.4f);
-                rect.localScale = Vector3.one * scale;
-                _disparaText.color = new Color(baseColor.r, baseColor.g, baseColor.b, Mathf.Lerp(0f, 1f, Mathf.Clamp01(t / 0.6f)));
-                yield return null;
-            }
-
-            rect.localScale = Vector3.one;
-            _disparaText.color = baseColor;
-            _disparaRoutine = null;
-        }
-
-        /// <summary>C8.1d.7 brief section 11: "DISPARA may fade quickly after
-        /// the shot... do not leave it permanently onscreen if it no longer
-        /// provides useful information." Called from
-        /// <see cref="FireSequenceRoutine"/> at the exact moment the player's
-        /// shot fires — a quick alpha-only fade (no scale change, keeps the
-        /// exit calm rather than another punch).</summary>
-        private void HideDisparaCueOnFire()
-        {
-            if (!_disparaText.gameObject.activeSelf)
-            {
-                return;
-            }
-
-            if (_disparaRoutine != null)
-            {
-                _host.StopCoroutine(_disparaRoutine);
-            }
-
-            _disparaRoutine = _host.StartCoroutine(DisparaFadeOutRoutine());
-        }
-
-        private IEnumerator DisparaFadeOutRoutine()
-        {
-            const float duration = 0.15f;
-            var startColor = _disparaText.color;
-
-            var elapsed = 0f;
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                var t = Mathf.Clamp01(elapsed / duration);
-                _disparaText.color = new Color(startColor.r, startColor.g, startColor.b, Mathf.Lerp(startColor.a, 0f, t));
-                yield return null;
-            }
-
-            _disparaText.gameObject.SetActive(false);
-            _disparaRoutine = null;
-        }
-
-        /// <summary>A hard, immediate hide (no fade) — used only when staging
-        /// round 1 hidden for the cinematic (<see cref="ShowChallenge"/>),
-        /// mirroring how the concept/labels/reticle are also hard-cleared
-        /// there rather than faded, since nothing should be visible at all
-        /// during that staged-hidden window.</summary>
-        private void HideDisparaCueImmediately()
-        {
-            if (_disparaRoutine != null)
-            {
-                _host.StopCoroutine(_disparaRoutine);
-                _disparaRoutine = null;
-            }
-
-            _disparaText.text = string.Empty;
-            _disparaText.color = new Color(Theme.Accent.r, Theme.Accent.g, Theme.Accent.b, 0f);
-            _disparaText.rectTransform.localScale = Vector3.one;
-            _disparaText.gameObject.SetActive(false);
+            // C8.1p: the visible "DISPARA" text cue was removed after manual
+            // RC review (it did not match the Gold presentation); the round
+            // now relies on the cinematic reveal, the ConceptSign, the
+            // outlaw nameplates and the reticle. FUTURE GOLD VOICE HOOK: this
+            // is the exact moment input becomes live on every round, so a
+            // real recorded "¡Dispara!" voice cue belongs here — e.g. a
+            // RuntimeUIFactory.LoadAudio("Audio/Gold/Western/Western_DisparaVoice")
+            // clip played once on _sfxAudioSource and logged via
+            // WesternAudioEvents.Record("DisparaVoice", clip), silent when the
+            // asset is absent. Not implemented: no synthesized/TTS/procedural
+            // placeholder — silence until real Gold audio exists.
         }
 
         /// <summary>A small, cheap settle-in (vertical rise + scale ease) for
@@ -1250,9 +1431,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// all pop in on the same frame.</summary>
         private IEnumerator OutlawSettleInRoutine(int index, float delay)
         {
+            var generation = _sequenceGeneration;
             if (delay > 0f)
             {
                 yield return new WaitForSeconds(delay);
+                if (generation != _sequenceGeneration) { yield break; }
             }
 
             var rect = _targets[index].transform as RectTransform;
@@ -1336,14 +1519,11 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// entirely.</summary>
         private IEnumerator FireSequenceRoutine(int selectedIndex, int correctIndex)
         {
+            var generation = _sequenceGeneration;
             var hasTarget = selectedIndex >= 0 && selectedIndex < _targets.Count && _targets[selectedIndex].gameObject.activeSelf;
 
-            // C8.1d.7: "DISPARA" no longer provides useful information once
-            // Decision has ended (hit or timeout alike) — fade it now rather
-            // than leaving it onscreen through the reveal.
-            HideDisparaCueOnFire();
-
             yield return new WaitForSeconds(0.08f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             if (hasTarget)
             {
@@ -1363,17 +1543,33 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 LocalMotionFx.FlashColor(_host, _muzzleFlashHandle, _muzzleFlash, new Color(1f, 0.85f, 0.4f, 0.9f), new Color(1f, 0.85f, 0.4f, 0f), 0.14f);
                 LocalMotionFx.Punch(_host, _screenKickHandle, _root, 0.16f, 1.015f);
                 yield return FireOffscreenShot(targetRect);
-
-                // C8.1d.7 brief section 10: a very small, optional impact
-                // accent, separate from the firearm shot itself, once the
-                // tracer actually arrives — reuses the existing quiet dust
-                // accent cue rather than adding a new one, kept subtle,
-                // never gore/blood.
-                _sfxAudioSource.PlayOneShot(_dustAccentClip);
-                WesternAudioEvents.Record("GameplayImpact", _dustAccentClip);
+                if (generation != _sequenceGeneration) { yield break; }
             }
 
             var hit = hasTarget && selectedIndex == correctIndex;
+
+            // C8.1d.10 first gated this dust-accent "impact" cue to misses
+            // only (it used to fire on every shot, including hits, which
+            // read as an unwanted extra "TUM" alongside the gunshot). C8.1d.11
+            // removes it from the miss path too, per a second human manual
+            // pass reporting the *incorrect*-answer sequence as "TUM -> PSS ->
+            // TUM" — overcrowded, not a coherent duel. Instrumented trace
+            // (WesternAudioEvents) plus this clip's own known shape
+            // (ProceduralAudio.Noise, a 0.3s heavily low-passed noise burst)
+            // confirmed the root cause: it used to start firing at ~0.20s
+            // (right as the visual reveal happens) and its own tail was
+            // still audibly decaying at ~16% peak amplitude when
+            // CountershotRoutine's enemy gunshot fired ~0.18s later at
+            // ~0.38s — the two literally overlapped, producing mud, not
+            // three clean beats. With <see cref="CountershotRoutine"/>
+            // already firing the correct outlaw's own "return fire" as the
+            // sole, sufficient failure-punctuation cue (see that method's own
+            // doc-comment — it already "replaces the old generic incorrect-
+            // answer ding entirely"), this accent added a redundant third
+            // beat rather than useful information. The clip itself
+            // (<see cref="_dustAccentClip"/>) is untouched and still used by
+            // the cinematic's own gunshot beat (<see cref="CinematicIntroRoutine"/>)
+            // — only this per-shot gameplay use is removed.
 
             for (var i = 0; i < _targets.Count; i++)
             {
@@ -1466,7 +1662,9 @@ namespace Hermit.Runtime.GameFramework.Microgames
         /// inside the brief's suggested 0.40-0.55s window.</summary>
         private IEnumerator CountershotRoutine(int correctIndex)
         {
+            var generation = _sequenceGeneration;
             yield return new WaitForSeconds(0.18f);
+            if (generation != _sequenceGeneration) { yield break; }
 
             if (_targets[correctIndex].gameObject.activeSelf)
             {
@@ -1557,6 +1755,7 @@ namespace Hermit.Runtime.GameFramework.Microgames
 
         private IEnumerator DustPuffRoutine(int index)
         {
+            var generation = _sequenceGeneration;
             var image = _dustPuffs[index];
             var rect = image.rectTransform;
             const float duration = 0.3f;
@@ -1570,16 +1769,60 @@ namespace Hermit.Runtime.GameFramework.Microgames
                 rect.localScale = Vector3.one * Mathf.Lerp(0.6f, 1.6f, t);
                 image.color = new Color(0.85f, 0.72f, 0.5f, Mathf.Lerp(0.7f, 0f, t));
                 yield return null;
+
+                if (generation != _sequenceGeneration)
+                {
+                    yield break;
+                }
             }
 
             image.color = new Color(0.85f, 0.72f, 0.5f, 0f);
             rect.localScale = Vector3.one;
         }
 
+        /// <summary>C8.1d.10: the single, centralized cancellation point
+        /// every exit/reset path (currently only <see cref="Hide"/>, but any
+        /// future one must route through here too) calls instead of hand-
+        /// rolling its own partial cleanup. Bumping <see cref="_sequenceGeneration"/>
+        /// is what actually stops the ~11 fire-and-forget coroutines this
+        /// presenter starts (see that field's own doc-comment) — every one
+        /// of them checks it at its own next resumption point and bails via
+        /// <c>yield break</c> — while the explicit calls below handle what a
+        /// generation bump alone can't: the two <see cref="AudioSource"/>s
+        /// (a generation bump doesn't silence
+        /// an already-triggered <c>PlayOneShot</c> voice already in flight —
+        /// only <c>AudioSource.Stop()</c> does that). Also clears every
+        /// leftover visual: the cinematic overlay, tracer, muzzle flash,
+        /// reticle, and dust puffs, so a later <see cref="ShowChallenge"/>
+        /// never inherits stale state from a sequence that was cut short.</summary>
+        private void CancelActiveWesternSequence()
+        {
+            _sequenceGeneration++;
+
+            _sfxAudioSource.Stop();
+            _musicAudioSource.Stop();
+
+            _cinematicRoot.gameObject.SetActive(false);
+            _tracer.gameObject.SetActive(false);
+            _reticle.gameObject.SetActive(false);
+            _conceptSign.SetActive(false);
+
+            var muzzleColor = _muzzleFlash.color;
+            _muzzleFlash.color = new Color(muzzleColor.r, muzzleColor.g, muzzleColor.b, 0f);
+
+            var hitFlashColor = _playerHitFlash.color;
+            _playerHitFlash.color = new Color(hitFlashColor.r, hitFlashColor.g, hitFlashColor.b, 0f);
+
+            for (var i = 0; i < _dustPuffs.Count; i++)
+            {
+                _dustPuffs[i].color = new Color(0.85f, 0.72f, 0.5f, 0f);
+            }
+        }
+
         public void Hide()
         {
+            CancelActiveWesternSequence();
             _root.gameObject.SetActive(false);
-            _musicAudioSource.Stop();
         }
     }
 }

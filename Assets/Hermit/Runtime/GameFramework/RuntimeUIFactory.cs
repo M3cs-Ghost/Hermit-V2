@@ -457,6 +457,107 @@ namespace Hermit.Runtime.GameFramework
             return (frame, portrait);
         }
 
+        /// <summary>C8.1j: a bordered, opaque (or near-opaque) backing
+        /// panel — "premium physical surface" instead of one generic
+        /// semi-transparent black rectangle reused everywhere (brief
+        /// section 14: "each archetype should have its own visual
+        /// grammar"). Built the same nested-rounded-rect way as every other
+        /// procedural shape here (<see cref="GetRoundedSprite"/>), never a
+        /// new shader/asset. Returns the outer bordered panel (position/size
+        /// it exactly like <see cref="CreateRoundedPanel(Transform,string,Color)"/>)
+        /// and the inset inner content rect (parent new children to this one
+        /// — same "(frame, content)" tuple shape as
+        /// <see cref="CreatePortraitFrame"/>, so callers don't have to
+        /// re-derive the border inset by hand).</summary>
+        public static (RectTransform panel, RectTransform content) CreatePremiumPanel(
+            Transform parent, string name, Color fillColor, Color borderColor, float borderWidth, int cornerRadius)
+        {
+            var panel = CreateRoundedPanel(parent, name, borderColor, cornerRadius);
+
+            var contentGo = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            var content = (RectTransform)contentGo.transform;
+            content.SetParent(panel, false);
+            content.anchorMin = Vector2.zero;
+            content.anchorMax = Vector2.one;
+            content.offsetMin = new Vector2(borderWidth, borderWidth);
+            content.offsetMax = new Vector2(-borderWidth, -borderWidth);
+
+            var contentImage = contentGo.GetComponent<Image>();
+            contentImage.sprite = GetRoundedSprite(Mathf.Max(2, cornerRadius - Mathf.RoundToInt(borderWidth)));
+            contentImage.type = Image.Type.Sliced;
+            contentImage.color = fillColor;
+            contentImage.raycastTarget = false;
+
+            return (panel, content);
+        }
+
+        /// <summary>C8.1j: a wrapping, multi-line-capable premium label for
+        /// text presented on a dedicated backing panel (verdicts, teaching
+        /// recaps, dossier/evidence bodies, signage headers) — the
+        /// counterpart to <see cref="CreateWorldLabel"/> (which is
+        /// deliberately single-line/no-wrap for environmental markers).
+        /// Shares the same Marcellus <see cref="DisplayFont"/> so every
+        /// premium text surface across the four Clásico archetypes reads as
+        /// one consistent typographic identity rather than each world
+        /// inventing its own font. <paramref name="autoShrinkMinSize"/> &gt;
+        /// 0 enables TMP's own best-fit auto-sizing (no clipping/truncation
+        /// regardless of string length — the brief's own suggested fix for
+        /// long teaching explanations) within [autoShrinkMinSize, fontSize].</summary>
+        public static TMP_Text CreatePremiumText(
+            Transform parent,
+            string name,
+            string content,
+            float fontSize,
+            Color color,
+            TextAlignmentOptions alignment,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 anchoredPosition,
+            Vector2 sizeDelta,
+            FontStyles fontStyle = FontStyles.Normal,
+            float characterSpacing = 0f,
+            float lineSpacing = 0f,
+            float autoShrinkMinSize = 0f)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = sizeDelta;
+
+            var label = go.GetComponent<TextMeshProUGUI>();
+            label.text = content;
+            label.fontSize = fontSize;
+            label.color = color;
+            label.fontStyle = fontStyle;
+            label.characterSpacing = characterSpacing;
+            label.lineSpacing = lineSpacing;
+            label.alignment = alignment;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            // Overflow, never Truncate: if a caller's box/min-size ever
+            // proves too small for some future string, the failure mode
+            // must be visible spillage a human notices in playtesting, not
+            // silent, invisible truncation (the exact original Detective
+            // recap bug this whole pass exists to fix).
+            label.overflowMode = TextOverflowModes.Overflow;
+            label.raycastTarget = false;
+            if (DisplayFont != null)
+            {
+                label.font = DisplayFont;
+            }
+
+            if (autoShrinkMinSize > 0f)
+            {
+                label.enableAutoSizing = true;
+                label.fontSizeMin = autoShrinkMinSize;
+                label.fontSizeMax = fontSize;
+            }
+
+            return label;
+        }
+
         private static Color AdjustBrightness(Color color, float delta)
         {
             return new Color(
@@ -630,6 +731,51 @@ namespace Hermit.Runtime.GameFramework
             _vignetteSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
             _vignetteSprite.name = texture.name;
             return _vignetteSprite;
+        }
+
+        private static Sprite _radialGlowSprite;
+
+        /// <summary>C8.1e: the alpha-inverse of <see cref="GetVignetteSprite"/>
+        /// — opaque center fading to transparent edges. Generated once and
+        /// cached, same procedural-texture spirit as every other sprite
+        /// generator here. Used for Game Show's spotlight/choice-zone glow
+        /// treatment (fake 2D lighting via alpha overlays, per this
+        /// project's standing "no real 3D lighting" rule) — tinted with
+        /// whatever color a given overlay needs at the call site.</summary>
+        public static Sprite GetRadialGlowSprite()
+        {
+            if (_radialGlowSprite != null)
+            {
+                return _radialGlowSprite;
+            }
+
+            const int size = 256;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "HermitRadialGlow"
+            };
+
+            var center = size / 2f;
+            var maxDist = center;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var dx = x + 0.5f - center;
+                    var dy = y + 0.5f - center;
+                    var dist = Mathf.Sqrt(dx * dx + dy * dy) / maxDist;
+                    var alpha = 1f - Mathf.Clamp01(Mathf.SmoothStep(0f, 1f, dist));
+                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+
+            texture.Apply();
+
+            _radialGlowSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            _radialGlowSprite.name = texture.name;
+            return _radialGlowSprite;
         }
     }
 }

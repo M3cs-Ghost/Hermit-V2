@@ -131,15 +131,11 @@ namespace Hermit.Tests.PlayMode
 
                 case MicrogameArchetype.Balance:
                 {
-                    var challenge = director.CurrentEquation;
-                    var steps = Mathf.RoundToInt((challenge.CorrectValue - challenge.StartValue) / challenge.StepSize);
-                    var buttonName = steps >= 0 ? "BalanceUp" : "BalanceDown";
-                    for (var i = 0; i < Mathf.Abs(steps); i++)
-                    {
-                        FindButton(buttonName).onClick.Invoke();
-                    }
-
-                    FindButton("BalanceConfirm").onClick.Invoke();
+                    var challenge = director.CurrentDebitCredit;
+                    var correctDebitIndex = System.Array.IndexOf(challenge.AccountOptions, challenge.CorrectDebitAccount);
+                    var correctCreditIndex = System.Array.IndexOf(challenge.AccountOptions, challenge.CorrectCreditAccount);
+                    FindButton($"BalanceAccountOption{correctDebitIndex}").onClick.Invoke();
+                    FindButton($"BalanceAccountOption{correctCreditIndex}").onClick.Invoke();
                     break;
                 }
 
@@ -289,6 +285,24 @@ namespace Hermit.Tests.PlayMode
             Assert.IsNotNull(FindButton("Game_clasico"));
             Assert.IsTrue(FindButton("Game_clasico").interactable, "The featured Clásico card must be interactable.");
             AssertValidSelection("Game_clasico");
+        }
+
+        /// <summary>C9.2a: the featured card must show the new Clásico key
+        /// art candidate — not the C9.2 mascot placeholder it replaced, and
+        /// not a missing/null sprite (which `RuntimeUIFactory.LoadArt`
+        /// would otherwise silently degrade to, per its own "warn and fall
+        /// back" contract for missing Gold art).</summary>
+        [UnityTest]
+        public IEnumerator FeaturedCard_ShowsClasicoKeyArt_NotTheOldMascotPlaceholder()
+        {
+            yield return EnterShellPastStartScreen();
+            yield return OpenArcadeGallery();
+
+            var expectedSprite = Resources.Load<Sprite>("Art/Shell/Arcade/Clasico_KeyArt_01");
+            Assert.IsNotNull(expectedSprite, "Clasico_KeyArt_01 must resolve as a Resources-loadable sprite.");
+
+            var portrait = FindImage("Portrait");
+            Assert.AreSame(expectedSprite, portrait.sprite, "The featured card must show the Clásico key art, not the retired mascot placeholder or any other sprite.");
         }
 
         /// <summary>C9.2: future slots are purely-visual placeholders (no

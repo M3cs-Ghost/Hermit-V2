@@ -1,13 +1,80 @@
 # C8.1d — Gold Slice Art Integration
 
-**Status: MANUAL VALIDATION PASSED.** Western's cinematic, gunshots,
-countershot, Outlaws, DISPARA cue, timing, and scoring have all been
-confirmed against a real Windows build (recorded at the C9 checkpoint —
-see `Docs/C9_1_START_SCREEN_HUB_IMPLEMENTATION.md`). Western is frozen as
-of that checkpoint: no further changes without a new, explicit reason.
-Every phase-specific "manual validation required" note below (C8.1d.1
-through C8.1d.9) is preserved as historical record of what was checked and
-found at the time — this line records only the current, overall status.
+**Status: GOLD VISUAL PASS ACCEPTED / MANUAL AUDIO/LIFECYCLE REGRESSION
+FIXES IN PROGRESS.** Western's cinematic, gunshots, countershot, Outlaws,
+DISPARA cue, timing, and scoring were confirmed against a real Windows
+build (recorded at the C9 checkpoint — see
+`Docs/C9_1_START_SCREEN_HUB_IMPLEMENTATION.md`). A later human manual
+acceptance pass (C8.1f.2, see `Docs/C8_1F_BALANCE_MECHANIC_REDESIGN.md`)
+found two real regressions since then; the first fix attempt there
+(`ClasicoHud.ShowCommand` only playing its command clip for a non-empty
+command) was confirmed by a second human manual pass to be root-cause-
+incomplete on both counts, which is what C8.1d.10 (this pass) actually
+fixed:
+
+1. **The "TUM"/duplicate gunshot on a correct shot.** Root cause: the
+   dust-accent "impact" cue (`WesternShootoutPresenter.FireSequenceRoutine`)
+   used to fire unconditionally on every shot, ~0.12s after the gunshot
+   crack — close enough, and itself a soft, heavily low-passed noise-burst
+   onset, to read as a second discrete "thud" alongside the gunshot on a
+   hit. C8.1d.10 first gated it to misses only; a third human manual pass
+   (C8.1d.11) then reported the *incorrect*-answer sequence itself as
+   overcrowded ("TUM -> PSS -> TUM"), so the accent was removed from the
+   gameplay fire sequence entirely — its own 0.3s tail was still audibly
+   ringing (~16% peak amplitude) when the countershot's own enemy gunshot
+   fired ~0.18s later, and the countershot alone already fully punctuates a
+   miss (a hit's own sprite/tint/punch/dust-puff feedback never needed it
+   either). The clip itself is untouched and still used by the cinematic's
+   own gunshot beat.
+2. **Western activity continuing after SALIR.** Root cause: `Hide()` only
+   deactivated the presenter's own root and stopped the music source — the
+   entire `CinematicIntroRoutine` chain (~11 fire-and-forget coroutines
+   started bare on the persistent `ClasicoHud` host, which outlives the
+   presenter's own root being deactivated) kept running regardless,
+   including further scheduled `PlayOneShot` calls on an SFX AudioSource
+   `Hide()` never touched. Fixed via an explicit `_sequenceGeneration`
+   guard checked at every coroutine resumption point plus a centralized
+   `CancelActiveWesternSequence()` (stops both AudioSources, clears every
+   leftover visual), both routed through `Hide()`.
+
+Final incorrect-answer audio sequence, after C8.1d.11: player gunshot ->
+(visual reveal, no audio) -> enemy-gunshot countershot -> silence. Final
+correct-answer sequence, unchanged since C8.1d.10: player gunshot only.
+Targeted Western PlayMode tests (including ones proving SALIR mid-cinematic
+never lets the delayed pre-draw/gunshot fire, re-entry afterward starts a
+clean new cinematic, and — new this pass — that no shared/duplicated audio
+fires anywhere in an incorrect round's whole reveal/countershot window) were
+run across C8.1d.10 and C8.1d.11.
+
+A fourth human manual pass (C8.1d.12) confirmed all of the above (music,
+delayed-FX, correct-shot, and incorrect-shot audio) were fixed, and reported
+one remaining presentation issue: a ~1 second dead gap where only the
+Western background was visible between the cinematic ending and the
+outlaws appearing. Root cause: `ClasicoGameDefinition.EncounterIntroSeconds`
+(the director's own Intro-phase timer, which alone used to gate the entire
+outlaw reveal) included a ~1.0s safety buffer above
+`CinematicIntroRoutine`'s own ~6.5s scripted runtime, so the cinematic
+visually finished up to a full second before anything else appeared. Fixed
+by splitting the old combined reveal into a visual half
+(`RevealOutlawVisuals`) — now called directly from `CinematicIntroRoutine`
+at the ~6.2s gunshot beat, overlapping the outlaws' entrance with the
+flash/cut teardown — and an input-enable half (`EnableOutlawInput`, still
+gated only by the real Intro->Decision transition), plus tightening
+`EncounterIntroSeconds` from 7.5s to 6.9s (a still-safe ~0.4s buffer). Input
+timing, answer logic, countershot behavior, and all Western audio were
+untouched. Targeted tests updated/added to prove: outlaws become visible
+before the Intro phase ends (no empty-background frame), input never
+enables early, and SALIR/re-entry during the new overlap window still
+cancels and resets cleanly.
+
+Not yet re-declared regression-free until a human manual pass on this
+latest rebuilt Windows executable confirms the C8.1d.12 transition fix with
+real eyes, per this project's standing "real human input has final
+authority over passing tests" rule — see this session's own report for the
+exact test counts/results. Every phase-specific "manual validation
+required" note below (C8.1d.1 through C8.1d.9) is preserved as historical
+record of what was checked and found at the time — this line records only
+the current, overall status.
 
 ## C8.1d.1 — Manual Validation Failure — Encounter Not Active in Production Runtime
 
@@ -3159,3 +3226,25 @@ E. Enemy shot is readable but does not feel like a second player shot?
 F. Red flash is noticeable but restrained?
 G. Failure sequence does not make the rapid-fire Encounter feel slow?
 H. Three rounds remain enjoyable when multiple mistakes happen consecutively?
+
+## C8.1p — Western "DISPARA" visual prompt removed
+
+Manual RC review: the presenter-owned "DISPARA" text cue (C8.1d.7; moved
+beside the ConceptSign in C8.1n) did not match the Gold presentation. It is
+removed outright — the `DisparaCue` Text, its show/punch-in, fade-on-fire and
+hard-hide paths, and its tracked coroutine are gone from
+`WesternShootoutPresenter`. Nothing replaces it: the round relies on the
+cinematic reveal, the ConceptSign, the outlaw nameplates and the reticle. The
+shared HUD command banner stays suppressed for Western (as since C8.1d.7), so
+no "DISPARA" text appears anywhere. Input timing, the answer window, shooting,
+scoring and timeout are unchanged — `EnableOutlawInput` is still the one input
+gate, it just no longer shows a cue.
+
+**Future Gold voice hook (documented only, not implemented):** a real recorded
+"¡Dispara!" voice line belongs at the end of `EnableOutlawInput` — the exact
+moment input goes live on every round — e.g. loaded via
+`RuntimeUIFactory.LoadAudio("Audio/Gold/Western/Western_DisparaVoice")`, played
+once on `_sfxAudioSource`, logged as `WesternAudioEvents.Record("DisparaVoice",
+clip)`, and silent when the asset is absent. No synthesized/TTS/procedural
+placeholder: silence until real Gold audio exists.
+

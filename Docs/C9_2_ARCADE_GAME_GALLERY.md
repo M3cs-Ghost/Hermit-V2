@@ -6,15 +6,19 @@ Hub, the featured Clásico presentation, the future slots, and Back→Hub
 navigation have all been confirmed. This is a foundation-level pass, not a
 finished art pass — see the explicit caveat below.
 
-**The featured-card poster art remains TEMPORARY/PLACEHOLDER.** It is an
-unapproved ArtBible mascot candidate (`Hermit_CandidateA_CardTest_Candidate_01.png`),
-reused because it happened to fit the requested "premium poster" visual
-language, not because it has been approved as Clásico's identity. It
-depicts the general Hermit mascot, not Clásico specifically. **Do not treat
-it as final Clásico key art** — a later, dedicated art phase should still
-produce real Clásico-specific key art; this checkpoint validates that the
-*gallery works and reads acceptably*, not that this specific poster is
-the answer.
+**Featured-card art update (C9.2a):** the original mascot placeholder
+(`Hermit_CandidateA_CardTest_Candidate_01.png`) is now
+**TEMPORARY PLACEHOLDER — RETIRED from featured-card use** (kept on disk,
+unreferenced by any code, per this project's "disable, don't delete"
+convention). It has been replaced by a dedicated Clásico key art
+candidate, `Clasico_KeyArt_01` (see the "C9.2a" section below for full
+details), which is now the **PRIMARY CANDIDATE — pending manual build
+validation**. Neither the old nor the new art has been approved as final
+by the user — the new one is simply a materially better candidate,
+purpose-built to represent Clásico as a whole rather than the general
+Hermit mascot. **Do not treat the new key art as final/approved** until a
+real Windows build confirms it reads well at actual featured-card size
+(see C9.2a's own manual validation checklist).
 
 This document records the foundation of the Arcade destination's real
 screen: a small "game gallery" presentation (Clásico as a featured
@@ -337,9 +341,10 @@ This document (new), plus the C9.1c section appended to
 
 ## Q. Remaining risks
 
-- The featured-card poster art is a placeholder borrowed from an
-  unapproved ArtBible mascot candidate — see Section E's explicit caveat.
-  A future phase needs real Clásico-specific key art.
+- The featured-card poster art was a placeholder borrowed from an
+  unapproved ArtBible mascot candidate — **superseded in C9.2a** by a
+  dedicated Clásico key art candidate (see the C9.2a section below), which
+  is itself still unapproved pending manual build validation.
 - The Arcade Gallery's background is a procedural vignette, not
   illustrated environment art — a reasonable stand-in, not a finished
   visual.
@@ -375,3 +380,129 @@ in a real Windows build and reported the experience works well:
 
 This presentation is now frozen per the C9 checkpoint — see the status
 note at the top of this document.
+
+---
+
+# C9.2a — Clásico Featured Key Art Integration
+
+**Status: IMPLEMENTATION IN PROGRESS — MANUAL KEY ART VALIDATION REQUIRED**
+
+Replaces the C9.2 mascot placeholder on the featured card with a real,
+dedicated Clásico key art candidate. **This is still a production
+candidate, not approved final art** — do not treat it as locked in before
+a real Windows build confirms it reads well at actual featured-card size.
+
+## Source candidate
+
+`ArtBible/Candidates/Clasico/KeyArt/Clasico_KeyArt_Candidate_02.png` (left
+untouched, per this project's standing "never modify ArtBible originals"
+rule).
+
+Visually, this candidate is a genuine improvement in kind, not just
+degree: it composes a single glowing golden balance/scale as its central
+focal point, with silhouetted references to all four Clásico microgame
+archetypes arranged around it — a Western sheriff (upper-left), a
+swirling game-show stage (upper-right), a detective under a spotlight
+with papers (lower-right), and industrial/balance-machine gearwork
+(lower-left). Unlike the old mascot placeholder (which depicted the
+overall Hermit mascot — the game's brand, not this specific game), this
+art reads as "Clásico as a whole" by construction.
+
+### Source inspection
+
+| Property | Value |
+|---|---|
+| Dimensions | 928×1232 |
+| Aspect ratio | 0.753 (~3:4, vertical — matches the brief's own description) |
+| Alpha | None — `Format24bppRgb`, fully opaque, no transparency channel |
+| Coincidence worth noting | Identical pixel dimensions to the retired mascot placeholder (also 928×1232) — the featured-card frame's own size (280×372, chosen in C9.2 to match that same aspect) needed **zero changes** for this swap |
+
+## Production copy
+
+`Assets/Hermit/Content/Resources/Art/Shell/Arcade/Clasico_KeyArt_01.png` —
+byte-identical copy of the source candidate (verified via `cmp`).
+
+### Import settings
+
+| Setting | Value | Rationale |
+|---|---|---|
+| Sprite mode | Single | Required for `Resources.Load<Sprite>(path)` — matches every other production art asset in this project. |
+| Texture compression | Uncompressed | Matches every other Shell/Gold art asset; avoids block-compression artifacts on gradient-heavy illustrated art. |
+| Max texture size | 2048 (default) | Source (928×1232) fits well within it — no change needed. |
+| Mipmaps | **Enabled** (deviation from the Shell-art norm) | The featured card displays this art at 280×372 — roughly a 3.3× minification from the 928×1232 source, unlike Start Screen/Hub/the old mascot card, which all render at or near native size. A generated mip chain measurably reduces shimmer/aliasing on detailed illustrated art at this level of minification, including during the card's own small keyboard/gamepad focus-scale animation (1.00→1.03). This is the first Shell art asset in the project actually held to non-trivial minification, so the standing "no mipmaps" convention (chosen for near-native-size art) doesn't apply here by its own reasoning. |
+| Filter mode | Trilinear (was Bilinear on every other Shell asset) | Paired deliberately with the mipmap change above — Trilinear blends between mip levels; Bilinear alone would still show visible mip-level popping during the focus-scale animation. |
+
+Not upscaled, not sharpened — used exactly as delivered, per the brief's
+explicit instruction.
+
+## Placeholder replacement
+
+`ArcadeGalleryHud.BuildFeaturedCard` now loads
+`"Art/Shell/Arcade/Clasico_KeyArt_01"` instead of
+`"Art/Shell/Arcade/Clasico_FeaturedCard_01"`. Only the *usage* was
+removed — per the brief and this project's standing "disable, don't
+delete" convention (the same one `ShellHomeHud` was retired under in
+C9.1), the old mascot placeholder's production copy
+(`Clasico_FeaturedCard_01.png` + `.meta`) and its ArtBible source
+(`Hermit_CandidateA_CardTest_Candidate_01.png`) are both left on disk,
+untouched, simply no longer referenced by any code. A repo-wide search
+confirms zero remaining code references to the old path.
+
+## Featured-card fit behavior
+
+Because the new key art shares the exact same 928×1232 source dimensions
+as the placeholder it replaced, the existing 280×372 frame size (chosen in
+C9.2 specifically to match that aspect ratio) required **no changes at
+all** — `preserveAspect = true` on the portrait `Image` continues to fit
+the art exactly within the frame with no stretching, no letterboxing, and
+no cropping. This is a genuine coincidence of both assets sharing the
+ArtBible pipeline's standard "card test" export size, not a deliberate
+constraint placed on the new art.
+
+## Featured card — architecture unchanged
+
+Per the brief, only the art reference changed. Untouched: the poster/
+cabinet frame (`RuntimeUIFactory.CreatePortraitFrame`), the full-card
+clickable target (named `Game_{GameId}`, i.e. `"Game_clasico"`, launching
+through the same `GameHub`/`IGameSelectorScreen` path), the "CLÁSICO"
+title (still rendered separately in Unity via `RuntimeUIFactory.CreateWorldLabel`,
+Marcellus, `AccentWarm` — never baked into the key art image itself), the
+descriptor text, the "ENTRAR" cue and its underline marker, the two future
+slots, and Back navigation.
+
+## Tests
+
+Added `FeaturedCard_ShowsClasicoKeyArt_NotTheOldMascotPlaceholder`
+(`ShellPlayModeTests.cs`) — confirms `Clasico_KeyArt_01` resolves as a
+real `Resources`-loadable sprite, and that the featured card's `Portrait`
+`Image` component references that exact sprite (by reference equality) —
+proving both that the new art loads correctly and that the old mascot
+placeholder is no longer in use, in one assertion. No screenshot/pixel
+tests, per the brief. Every other C9.2 test (featured card interactable,
+Clásico launches through `GameHub`, Back→Hub, future slots non-playable)
+is unaffected by this swap and continues to pass unmodified.
+
+## Manual validation requirement
+
+Windows build required — none of the above has been visually confirmed at
+actual size. Validate specifically:
+
+- [ ] Does the key art read clearly at actual featured-card size (280×372
+      canvas units, further scaled by the player's own resolution)?
+- [ ] Is the central golden-scale focal point still obvious at that size?
+- [ ] Does it feel like Clásico as a whole, not one specific microgame
+      archetype?
+- [ ] Does it look better than the previous mascot placeholder?
+- [ ] Does the frame crop anything important? (Expected: no, given the
+      identical-aspect coincidence above — but not yet confirmed visually.)
+- [ ] Does the "CLÁSICO" title remain readable and visually separate from
+      the art beneath it?
+- [ ] Does the Arcade Gallery now feel more like a real game-selection
+      screen with this art in place?
+- [ ] Do the enabled mipmaps/Trilinear filtering actually improve
+      perceived quality at this size, or was the standing no-mipmap
+      convention fine all along? (Worth a deliberate side-by-side glance
+      if easy — this was a reasoned bet, not a measurement.)
+
+This candidate remains **PRIMARY CANDIDATE — pending manual build
+validation**, not final/approved, until that checklist is confirmed.
