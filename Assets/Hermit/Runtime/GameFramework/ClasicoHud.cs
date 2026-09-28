@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Hermit.Economy;
 using Hermit.Games;
 
 namespace Hermit.Runtime.GameFramework
@@ -45,6 +46,9 @@ namespace Hermit.Runtime.GameFramework
         private Text _resultsSummaryText;
         private Button _restartButton;
         private Button _exitButton;
+
+        // C9.1: Hermit Coin breakdown beside the results card (display only).
+        private HermitRewardSummaryPanel _rewardPanel;
 
         private RectTransform _transitionOverlay;
         private Image _transitionImage;
@@ -112,6 +116,7 @@ namespace Hermit.Runtime.GameFramework
         {
             _playingPanel.gameObject.SetActive(true);
             _resultsPanel.gameObject.SetActive(false);
+            _rewardPanel?.Hide();
             _feedbackText.text = string.Empty;
             _commandText.gameObject.SetActive(false);
             _countdownText.gameObject.SetActive(false);
@@ -121,6 +126,15 @@ namespace Hermit.Runtime.GameFramework
         {
             _playingPanel.gameObject.SetActive(false);
             _resultsPanel.gameObject.SetActive(false);
+            _rewardPanel?.Hide();
+        }
+
+        /// <summary>C9.1: shows the session's Hermit Coin breakdown next to
+        /// the results card. Called by ClasicoGameHost after the economy has
+        /// processed the finished session — the HUD never computes rewards.</summary>
+        public void ShowRewardSummary(HermitRewardOutcome outcome)
+        {
+            _rewardPanel?.Show(outcome);
         }
 
         public void RenderCountdown(int secondsRemaining)
@@ -256,6 +270,7 @@ namespace Hermit.Runtime.GameFramework
         {
             _playingPanel.gameObject.SetActive(false);
             _resultsPanel.gameObject.SetActive(true);
+            _rewardPanel?.Hide();
 
             var cleared = result.Correct + result.Incorrect;
             _resultsTitleText.text = result.Completed ? "Resultados" : "Partida abandonada";
@@ -363,7 +378,9 @@ namespace Hermit.Runtime.GameFramework
             var card = RuntimeUIFactory.CreateRoundedPanel(_resultsPanel, "ResultsCard", Theme.Panel);
             card.anchorMin = new Vector2(0.5f, 0.5f);
             card.anchorMax = new Vector2(0.5f, 0.5f);
-            card.anchoredPosition = Vector2.zero;
+            // C9.1: shifted left to make room for the Hermit Coin card
+            // (620 + 30 gap + 440 = 1090 of the 1280 reference width).
+            card.anchoredPosition = new Vector2(-235f, 0f);
             card.sizeDelta = new Vector2(620, 400);
 
             _resultsTitleText = RuntimeUIFactory.CreateText(
@@ -385,6 +402,9 @@ namespace Hermit.Runtime.GameFramework
             _exitButton.onClick.AddListener(() => ExitToIdleRequested?.Invoke());
 
             RuntimeUIFactory.ChainHorizontal(_restartButton, _exitButton);
+
+            _rewardPanel = new HermitRewardSummaryPanel(this);
+            _rewardPanel.Build(_resultsPanel, new Vector2(325f, 0f), new Vector2(440f, 430f));
         }
 
         // --- Global feedback motion — coroutines + Mathf, no tweening

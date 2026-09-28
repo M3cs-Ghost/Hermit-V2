@@ -34,6 +34,11 @@ namespace Hermit.Games.Clasico
         }
 
         private ClasicoGameDefinition _definition;
+
+        // C9.1: one record per resolved round, for the session result the
+        // Hermit economy reads (see ClasicoSessionResult). Read-only data —
+        // nothing in Clásico gameplay consults it.
+        private readonly List<ClasicoRoundRecord> _roundRecords = new List<ClasicoRoundRecord>();
         private GameContext _context;
         private GameSession _session;
 
@@ -153,6 +158,8 @@ namespace Hermit.Games.Clasico
             _context = context;
             _definition = (ClasicoGameDefinition)definition;
             _session = session;
+            _roundRecords.Clear();
+            LastSessionResult = null;
 
             _classificationPool = Shuffled(ClasicoMicrogameLibrary.ClassificationPool, context.Rng);
             _trueFalsePool = Shuffled(ClasicoMicrogameLibrary.TrueFalsePool, context.Rng);
@@ -322,8 +329,21 @@ namespace Hermit.Games.Clasico
             ResolveCurrentMicrogame();
         }
 
+        /// <summary>C9.1: the economy-facing facts of the session just
+        /// finished — built together with <see cref="BuildResult"/> (so it
+        /// exists by the time GameFlowController raises ResultReady) and
+        /// kept until the next <see cref="Begin"/>. Null before any session
+        /// has finished.</summary>
+        public ClasicoSessionResult LastSessionResult { get; private set; }
+
         public GameResult BuildResult(bool completed)
         {
+            LastSessionResult = new ClasicoSessionResult(
+                _session.SessionId,
+                completed && _finished && _sequence != null && _roundRecords.Count == _sequence.Length,
+                _sequence?.Length ?? 0,
+                _roundRecords);
+
             const string contentSetId = "clasico_microgames_v1";
             const int contentSchemaVersion = 1;
             return new GameResult(
@@ -372,6 +392,15 @@ namespace Hermit.Games.Clasico
             }
 
             var decisionWindow = GetDecisionWindowSeconds(CurrentArchetype, _currentRoundWithinEncounter);
+
+            // C9.1: interaction = an answer actually committed through the
+            // real input path (a submitted selection; for Balance, at least
+            // the debit pick). A decision timeout submits -1 / nothing.
+            var interacted = _activeEngine is SelectionMicrogameEngine submitted
+                ? submitted.SelectedIndex >= 0
+                : _activeEngine is DebitCreditMicrogameEngine picked && picked.SelectedDebitIndex >= 0;
+            _roundRecords.Add(new ClasicoRoundRecord(CurrentArchetype, correct, interacted, _decisionElapsed, decisionWindow));
+
             var gained = ClasicoScoring.ComputeQuestionScore(
                 correct, _decisionElapsed, decisionWindow, _definition.PointsPerCorrectAnswer, _definition.MaxSpeedBonusPoints);
 

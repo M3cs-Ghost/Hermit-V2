@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using Hermit.Economy;
 using Hermit.Games;
 using Hermit.Games.Clasico;
 using Hermit.Games.Clasico.Microgames;
@@ -31,6 +32,10 @@ namespace Hermit.Tests.PlayMode
         [UnitySetUp]
         public IEnumerator SetUp()
         {
+            // C9.1: never touch the player's real Hermit Coin save — every
+            // session these tests finish is credited to an in-memory economy.
+            HermitEconomy.OverrideForTests(new HermitEconomyService(
+                new InMemoryHermitEconomyStore(), new FixedHermitClock(new System.DateTime(2026, 9, 21, 10, 0, 0)), HermitEconomyDefinition.CreateDefault()));
             _root = new GameObject("ShellTest");
             _installer = _root.AddComponent<ShellInstaller>();
             yield return null;
@@ -41,6 +46,7 @@ namespace Hermit.Tests.PlayMode
         {
             Object.Destroy(_root);
             yield return null;
+            HermitEconomy.ResetOverride();
         }
 
         private Button FindButton(string name) => _root.GetComponentsInChildren<Button>(true).First(b => b.name == name);

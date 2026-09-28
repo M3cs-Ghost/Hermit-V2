@@ -8,6 +8,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using Hermit.Economy;
 using Hermit.Games;
 using Hermit.Games.Clasico;
 using Hermit.Games.Clasico.Microgames;
@@ -30,6 +31,8 @@ namespace Hermit.Tests.PlayMode
     {
         private GameObject _root;
         private GameSessionInstaller _installer;
+        private InMemoryHermitEconomyStore _economyStore;
+        private FixedHermitClock _economyClock;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -41,6 +44,10 @@ namespace Hermit.Tests.PlayMode
             // never leak into this one's assertions.
             WesternAudioEvents.Clear();
             GameShowAudioEvents.Clear();
+            _economyStore = new InMemoryHermitEconomyStore();
+            _economyClock = new FixedHermitClock(new System.DateTime(2026, 9, 21, 10, 0, 0));
+            // C9.1: never touch the player's real Hermit Coin save.
+            HermitEconomy.OverrideForTests(new HermitEconomyService(_economyStore, _economyClock, HermitEconomyDefinition.CreateDefault()));
             yield return null;
         }
 
@@ -49,6 +56,7 @@ namespace Hermit.Tests.PlayMode
         {
             Object.Destroy(_root);
             yield return null;
+            HermitEconomy.ResetOverride();
         }
 
         private Button FindButton(string name) => _root.GetComponentsInChildren<Button>(true).First(b => b.name == name);
@@ -2728,6 +2736,168 @@ namespace Hermit.Tests.PlayMode
             // here even though the two zones are genuinely showing
             // different colors.
             Assert.AreNotEqual(winningGlow.color, losingGlow.color, "Correct and incorrect zones must end up in visibly different states after a reveal.");
+        }
+
+        // --- C9.1: Hermit Coins v0.1 (every test runs against the in-memory
+        // economy installed in SetUp — never the player's real save) ---
+
+        private GameObject RewardPanel() =>
+            _root.GetComponentsInChildren<RectTransform>(true).First(r => r.name == "HermitRewardPanel").gameObject;
+
+        private string RewardText(string name) =>
+            _root.GetComponentsInChildren<TMP_Text>(true).First(t => t.name == name && HasAncestorNamed(t.transform, "HermitRewardPanel")).text;
+
+        /// <summary>Active breakdown lines as "label = value".</summary>
+        private List<string> RewardLines() =>
+            _root.GetComponentsInChildren<RectTransform>(true)
+                .Where(r => r.name.StartsWith("RewardLine") && r.gameObject.activeSelf && HasAncestorNamed(r, "HermitRewardPanel"))
+                .OrderBy(r => r.name)
+                .Select(r =>
+                {
+                    var texts = r.GetComponentsInChildren<TMP_Text>(true);
+                    return $"{texts.First(t => t.name == "Label").text} = {texts.First(t => t.name == "Value").text}";
+                })
+                .ToList();
+
+        /// <summary>Plays a whole session through the real UI, answering
+        /// every round correctly — asserting on every frame that no reward
+        /// UI ever appears while rounds are being played.</summary>
+        private IEnumerator PlayWholeSessionAnsweringCorrectly()
+        {
+            yield return LaunchClasico();
+            var guard = 0;
+            while (IsPlaying() && guard++ < 12)
+            {
+                Assert.IsFalse(RewardPanel().activeInHierarchy, "No Hermit Coin UI may appear during rounds.");
+                yield return AnswerCurrentMicrogame(answerCorrectly: true);
+            }
+
+            Assert.AreEqual(GameLifecycleState.Results, _installer.FlowController.State, "The session never reached Results.");
+            yield return new WaitForSeconds(0.8f); // let the count-up finish
+        }
+
+        /// <summary>Scenarios A, B, E, G(deferred), H: a first valid session
+        /// of the day, all correct — the breakdown appears on Results with
+        /// +12 / +8 (9/9) / speed / +25 first-session, no variety line
+        /// (deferred in v0.1) and no multiplier line; the wallet grows by
+        /// exactly the total; offering the same session again (a re-raised
+        /// result, or an app restart over the same save) never pays twice.</summary>
+        [UnityTest]
+        public IEnumerator Economy_FirstPerfectSession_ShowsBreakdown_CreditsWallet_Once()
+        {
+            yield return PlayWholeSessionAnsweringCorrectly();
+
+            var service = HermitEconomy.Service;
+            var director = GetDirector();
+            var session = director.LastSessionResult;
+            Assert.IsNotNull(session);
+            Assert.AreEqual(9, session.Rounds.Count);
+            Assert.AreEqual(9, session.CorrectAnswers);
+            CollectionAssert.IsSupersetOf(session.ArchetypesPlayed, HermitRewardCalculator.AllClasicoArchetypes);
+
+            Assert.IsTrue(RewardPanel().activeInHierarchy, "The Hermit Coin breakdown must appear on Results.");
+            var lines = RewardLines();
+            CollectionAssert.Contains(lines, "Participación = +12 HC");
+            CollectionAssert.Contains(lines, "Precisión  9/9 = +8 HC");
+            Assert.IsTrue(lines.Any(l => l.StartsWith("Velocidad = +")), "The speed line must always be shown.");
+            CollectionAssert.Contains(lines, "Primera sesión del día = +25 HC");
+            Assert.IsFalse(lines.Any(l => l.StartsWith("Práctica adicional")), "Session 1 must not show a multiplier.");
+            Assert.IsFalse(lines.Any(l => l.StartsWith("Variedad")), "The variety bonus is deferred in v0.1.");
+            Assert.AreEqual("Sesión 1 de hoy", RewardText("RewardSubtitle"));
+
+            var balance = service.Wallet.Balance;
+            var replay = service.ProcessClasicoSession(session);
+            Assert.IsFalse(replay.Credited, "Re-offering the same session must not pay again.");
+            Assert.IsTrue(replay.AlreadyCredited);
+            Assert.AreEqual(balance, service.Wallet.Balance);
+
+            var reward = replay.Reward;
+            Assert.AreEqual(12, reward.BaseReward);
+            Assert.AreEqual(8, reward.AccuracyBonus);
+            Assert.AreEqual(25, reward.FirstSessionBonus);
+            Assert.AreEqual(0, reward.VarietyBonus);
+            Assert.That(reward.SpeedBonus, Is.InRange(0, 4));
+            CollectionAssert.Contains(lines, $"Velocidad = +{reward.SpeedBonus} HC");
+            Assert.AreEqual(12 + 8 + reward.SpeedBonus + 25, reward.TotalReward);
+            Assert.AreEqual(reward.TotalReward, balance, "The first session's credit is the whole balance.");
+            Assert.AreEqual($"{balance} HC", RewardText("RewardTotalValue"));
+            Assert.AreEqual($"{balance} HC", RewardText("RewardBalanceValue"));
+
+            var afterRestart = new HermitEconomyService(_economyStore, _economyClock, HermitEconomyDefinition.CreateDefault());
+            Assert.AreEqual(balance, afterRestart.Wallet.Balance, "The balance must survive a reload.");
+            Assert.IsFalse(afterRestart.ProcessClasicoSession(session).Credited, "A reload/re-entry must not pay the same session again.");
+            Assert.AreEqual(balance, afterRestart.Wallet.Balance);
+        }
+
+        /// <summary>Scenarios F + I: a later session the same day (seeded as
+        /// the 3rd valid session) gets no first-session bonus and shows its
+        /// "Práctica adicional ×0.60" multiplier line.</summary>
+        [UnityTest]
+        public IEnumerator Economy_ThirdSessionOfTheDay_ShowsMultiplier_NoFirstSessionBonus()
+        {
+            var seeded = new HermitEconomySaveData
+            {
+                balance = 70,
+                lifetimeEarned = 70,
+                currentLocalDate = "2026-09-21",
+                validSessionsToday = 2,
+                firstSessionBonusClaimedToday = true,
+                currentWeekId = "2026-09-21",
+                activeDaysThisWeek = new List<string> { "2026-09-21" },
+            };
+            _economyStore.Save(seeded);
+            HermitEconomy.OverrideForTests(new HermitEconomyService(_economyStore, _economyClock, HermitEconomyDefinition.CreateDefault()));
+
+            yield return PlayWholeSessionAnsweringCorrectly();
+
+            var lines = RewardLines();
+            CollectionAssert.Contains(lines, "Práctica adicional = ×0.60");
+            Assert.IsFalse(lines.Any(l => l.StartsWith("Primera sesión")), "Only the first session of the day gets +25.");
+            Assert.AreEqual("Sesión 3 de hoy", RewardText("RewardSubtitle"));
+
+            var wallet = HermitEconomy.Service.Wallet;
+            var credited = wallet.Transactions.Last().Amount;
+            Assert.AreEqual(70 + credited, wallet.Balance);
+            Assert.LessOrEqual(credited, 15, "(12 + 8 + speed <= 24) x 0.60 rounds to at most 14-15 HC.");
+            Assert.AreEqual($"{70 + credited} HC", RewardText("RewardBalanceValue"));
+        }
+
+        /// <summary>Scenario C: aborting pays nothing and says why.</summary>
+        [UnityTest]
+        public IEnumerator Economy_AbortedSession_PaysNothing_AndExplainsWhy()
+        {
+            yield return LaunchClasico();
+            FindButton("AbortButton").onClick.Invoke();
+            yield return null;
+
+            Assert.AreEqual(GameLifecycleState.Results, _installer.FlowController.State);
+            Assert.IsTrue(RewardPanel().activeInHierarchy);
+            Assert.AreEqual("Sin Hermit Coins esta vez", RewardText("RewardSubtitle"));
+            StringAssert.Contains("Sesión abandonada", RewardText("RewardNote"));
+            Assert.IsEmpty(RewardLines());
+            Assert.AreEqual(0, HermitEconomy.Service.Wallet.Balance);
+            Assert.IsNull(_economyStore.Load(), "An aborted session must not write any economy state.");
+        }
+
+        /// <summary>Scenario D: a session where the player never answers
+        /// (every round times out) pays nothing — interaction comes from real
+        /// answer events, never from elapsed time.</summary>
+        [UnityTest]
+        public IEnumerator Economy_AllPassiveTimeouts_PaysNothing()
+        {
+            FindButton("Game_clasico").onClick.Invoke();
+            yield return WaitUntil(() => _installer.FlowController.State == GameLifecycleState.Results, 150f,
+                "A fully passive session never reached Results.");
+            yield return null;
+
+            var session = GetDirector().LastSessionResult;
+            Assert.AreEqual(0, session.InteractedRounds);
+            Assert.IsTrue(session.CompletedNaturally);
+            Assert.IsTrue(RewardPanel().activeInHierarchy);
+            Assert.AreEqual("Sin Hermit Coins esta vez", RewardText("RewardSubtitle"));
+            StringAssert.Contains("Respondiste 0 de 9", RewardText("RewardNote"));
+            Assert.AreEqual(0, HermitEconomy.Service.Wallet.Balance);
+            Assert.IsNull(_economyStore.Load());
         }
 
         // --- C8.1k: Game Show showmanship pass ---

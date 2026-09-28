@@ -768,6 +768,49 @@ namespace Hermit.Tests.EditMode
                 "The session must include both Game Show and Detective rounds.");
         }
 
+        /// <summary>C9.1: the director's read-only session result for the
+        /// Hermit economy — one record per resolved round, real interaction
+        /// only when an answer was committed (a timeout is not interaction),
+        /// and natural completion vs abort.</summary>
+        [Test]
+        public void SessionResult_RecordsEveryRound_InteractionAndCompletion()
+        {
+            var (answered, answeredSession) = BeginDirector(microgameCount: 4, decisionWindowSeconds: 1f, balanceDecisionWindowSeconds: 1f, seed: 3);
+            while (!answered.IsFinished)
+            {
+                ResolveCurrent(answered, answerCorrectly: true);
+            }
+
+            answered.BuildResult(completed: true);
+            var result = answered.LastSessionResult;
+            Assert.IsTrue(result.CompletedNaturally);
+            Assert.AreEqual(4, result.PlannedRounds);
+            Assert.AreEqual(4, result.Rounds.Count);
+            Assert.AreEqual(answeredSession.SessionId, result.SessionId);
+            Assert.IsTrue(result.Rounds.All(r => r.Interacted), "Every answered round must count as interacted.");
+            Assert.AreEqual(answeredSession.Correct, result.CorrectAnswers);
+            Assert.IsTrue(result.Rounds.All(r => r.AnswerWindowSeconds > 0f));
+
+            var (passive, _) = BeginDirector(microgameCount: 4, decisionWindowSeconds: 1f, balanceDecisionWindowSeconds: 1f, seed: 4);
+            while (!passive.IsFinished)
+            {
+                passive.Tick(0.001f); // Intro -> Decision
+                passive.Tick(1.5f);   // decision window runs out
+                passive.Tick(0.001f); // Lock -> Feedback
+                passive.Tick(0.001f); // Feedback -> next
+            }
+
+            passive.BuildResult(completed: true);
+            Assert.AreEqual(4, passive.LastSessionResult.Rounds.Count);
+            Assert.IsTrue(passive.LastSessionResult.Rounds.All(r => !r.Interacted && !r.Correct), "A timeout is never interaction.");
+
+            var (aborted, _) = BeginDirector(microgameCount: 4, seed: 5);
+            ResolveCurrent(aborted, answerCorrectly: true);
+            aborted.BuildResult(completed: false);
+            Assert.IsFalse(aborted.LastSessionResult.CompletedNaturally);
+            Assert.AreEqual(1, aborted.LastSessionResult.Rounds.Count);
+        }
+
         private static void ProductionSubmitAnswer(ClasicoSessionDirector director, bool answerCorrectly)
         {
             switch (director.CurrentArchetype)

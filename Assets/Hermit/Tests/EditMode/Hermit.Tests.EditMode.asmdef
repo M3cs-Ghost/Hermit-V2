@@ -1,27 +1,28 @@
 {
-  "name": "Hermit.Tests.EditMode",
-  "rootNamespace": "Hermit.Tests.EditMode",
-  "references": [
-    "Hermit.Core",
-    "Hermit.Networking",
-    "Hermit.Games"
-  ],
-  "includePlatforms": [
-    "Editor"
-  ],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": true,
-  "precompiledReferences": [
-    "nunit.framework.dll"
-  ],
-  "autoReferenced": true,
-  "defineConstraints": [
-    "UNITY_INCLUDE_TESTS"
-  ],
-  "versionDefines": [],
-  "noEngineReferences": false,
-  "optionalUnityReferences": [
-    "TestAssemblies"
-  ]
+    "name": "Hermit.Tests.EditMode",
+    "rootNamespace": "Hermit.Tests.EditMode",
+    "references": [
+        "Hermit.Core",
+        "Hermit.Networking",
+        "Hermit.Games",
+        "Hermit.Economy"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
 }

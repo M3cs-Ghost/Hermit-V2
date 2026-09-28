@@ -1,3 +1,6 @@
+using System;
+using Hermit.Core;
+using Hermit.Economy;
 using Hermit.Games;
 using Hermit.Games.Clasico;
 using Hermit.Games.Clasico.Microgames;
@@ -66,6 +69,10 @@ namespace Hermit.Runtime.GameFramework
         {
             _controller = controller;
             _controller.ResultReady += _hud.ShowResults;
+            // C9.1: after the normal results, hand the finished session to
+            // the Hermit economy (subscribed after ShowResults, so the
+            // reward card appears on an already-shown Results screen).
+            _controller.ResultReady += OnResultReadyForEconomy;
 
             _lastRenderedMicrogameIndex = -1;
             _introVisualsActive = false;
@@ -81,6 +88,7 @@ namespace Hermit.Runtime.GameFramework
             if (_controller != null)
             {
                 _controller.ResultReady -= _hud.ShowResults;
+                _controller.ResultReady -= OnResultReadyForEconomy;
             }
 
             HideAllPresenters();
@@ -137,9 +145,9 @@ namespace Hermit.Runtime.GameFramework
                     // stays onscreen for the archetype's entire Intro phase,
                     // which for a Western Encounter's round 1 is the whole
                     // ~7.5s cinematic (it would float over every close-up).
-                    // WesternShootoutPresenter now shows its own, smaller
-                    // cue at the actual moment of gameplay reveal instead
-                    // (see ShowDisparaCue). ShowCommand is still called for
+                    // WesternShootoutPresenter showed its own, smaller cue
+                    // at gameplay reveal instead, until C8.1p removed that
+                    // visual cue entirely. ShowCommand is still called for
                     // its other side effects (clearing stale feedback text,
                     // resetting the timer fill) that every archetype's Intro
                     // still needs — only the visible banner text is
@@ -355,6 +363,29 @@ namespace Hermit.Runtime.GameFramework
         {
             HideAllPresenters();
             _controller?.Abort();
+        }
+
+        /// <summary>C9.1: the ONLY coupling between Clásico and the Hermit
+        /// economy — the director's read-only <see cref="ClasicoSessionResult"/>
+        /// goes to <see cref="HermitEconomy.Service"/>, whose outcome the HUD
+        /// merely displays. Clásico never touches currency, and an economy
+        /// failure can never break the normal results flow.</summary>
+        private void OnResultReadyForEconomy(GameResult result)
+        {
+            if (!(_controller?.CurrentEngine is ClasicoSessionDirector director) || director.LastSessionResult == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var outcome = HermitEconomy.Service.ProcessClasicoSession(director.LastSessionResult);
+                _hud.ShowRewardSummary(outcome);
+            }
+            catch (Exception e)
+            {
+                HermitLog.Error($"Hermit economy could not process the Clásico session: {e}");
+            }
         }
 
         private void OnSelectionInput(int index)

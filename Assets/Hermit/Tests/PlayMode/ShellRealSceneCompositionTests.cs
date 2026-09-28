@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using Hermit.Economy;
 
 namespace Hermit.Tests.PlayMode
 {
@@ -42,6 +43,10 @@ namespace Hermit.Tests.PlayMode
         [UnitySetUp]
         public IEnumerator SetUp()
         {
+            // C9.1: never touch the player's real Hermit Coin save — every
+            // session these tests finish is credited to an in-memory economy.
+            HermitEconomy.OverrideForTests(new HermitEconomyService(
+                new InMemoryHermitEconomyStore(), new FixedHermitClock(new System.DateTime(2026, 9, 21, 10, 0, 0)), HermitEconomyDefinition.CreateDefault()));
             _scene = SceneManager.LoadScene("01_Shell", new LoadSceneParameters(LoadSceneMode.Additive));
             yield return null;
             yield return null; // a second frame so every Awake() in the scene has run
@@ -51,6 +56,7 @@ namespace Hermit.Tests.PlayMode
         public IEnumerator TearDown()
         {
             yield return SceneManager.UnloadSceneAsync(_scene);
+            HermitEconomy.ResetOverride();
         }
 
         private GameObject FindInScene(string name)
